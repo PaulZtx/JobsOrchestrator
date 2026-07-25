@@ -1,0 +1,11 @@
+C:\Users\stsma\RiderProjects\JobsOperator\Jobs\bin\Debug\net10.0\Jobs.deps.json
+C:\Users\stsma\RiderProjects\JobsOperator\Jobs\bin\Debug\net10.0\Jobs.dll
+C:\Users\stsma\RiderProjects\JobsOperator\Jobs\bin\Debug\net10.0\Jobs.pdb
+C:\Users\stsma\RiderProjects\JobsOperator\Jobs\obj\Debug\net10.0\Jobs.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\stsma\RiderProjects\JobsOperator\Jobs\obj\Debug\net10.0\Jobs.AssemblyInfoInputs.cache
+C:\Users\stsma\RiderProjects\JobsOperator\Jobs\obj\Debug\net10.0\Jobs.AssemblyInfo.cs
+C:\Users\stsma\RiderProjects\JobsOperator\Jobs\obj\Debug\net10.0\Jobs.csproj.CoreCompileInputs.cache
+C:\Users\stsma\RiderProjects\JobsOperator\Jobs\obj\Debug\net10.0\Jobs.dll
+C:\Users\stsma\RiderProjects\JobsOperator\Jobs\obj\Debug\net10.0\refint\Jobs.dll
+C:\Users\stsma\RiderProjects\JobsOperator\Jobs\obj\Debug\net10.0\Jobs.pdb
+C:\Users\stsma\RiderProjects\JobsOperator\Jobs\obj\Debug\net10.0\ref\Jobs.dll
