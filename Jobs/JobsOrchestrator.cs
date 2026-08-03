@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Data;
 using Jobs.JobsEntities;
 using Jobs.JobsEntities.Interfaces;
 
@@ -9,11 +8,13 @@ public class JobsOrchestrator
 {
     private readonly ConcurrentDictionary<Guid, JobEntry> _jobs;
     private readonly CancellationTokenSource _cancellationTokenSource;
+    private readonly IServiceProvider _serviceProvider;
     
-    public JobsOrchestrator()
+    public JobsOrchestrator(IServiceProvider? serviceProvider = null)
     {
         _jobs = [];
         _cancellationTokenSource = new CancellationTokenSource();
+        _serviceProvider = serviceProvider ?? EmptyServiceProvider.Instance;
     }
 
     public OrchestratorStatus TryAddJob(IJob job)
@@ -23,22 +24,28 @@ public class JobsOrchestrator
         {
             var jobId = Guid.NewGuid();
             var cancellationTokenSource = new CancellationTokenSource();
+            var builder = new BasicJobBuilder();
+            job.Configure(builder);
+            var runtime = new BasicJobRuntime(builder.Build(), _serviceProvider);
+            var task = Task.Run(
+                () => runtime.RunAsync(cancellationTokenSource.Token),
+                _cancellationTokenSource.Token);
+
             var jobEntry = new JobEntry()
             {
                 JobId = jobId, 
                 Job = job,
-                CancellationTokenSource = cancellationTokenSource
+                CancellationTokenSource = cancellationTokenSource,
+                Runtime = runtime,
+                JobTask = task
             };
-            
-            var task = Task.Run(async () => await job.ExecuteAsync(_, jobEntry.CancellationTokenSource.Token), _cancellationTokenSource.Token);
-            
-            jobEntry.JobTask = task;
+
             _jobs[jobEntry.JobId] = jobEntry;
             
             // Log
             
             status.JobId = jobId;
-            
+            Console.WriteLine($"Job {jobId} added");
             return status;
         }
         catch (Exception e)
@@ -64,11 +71,18 @@ public class JobsOrchestrator
             // Log
             return true;
         }
-        catch (Exception e)
+        catch (Exception)
         {
             // Log
             return false;
         }
+    }
+
+    private sealed class EmptyServiceProvider : IServiceProvider
+    {
+        public static EmptyServiceProvider Instance { get; } = new();
+
+        public object? GetService(Type serviceType) => null;
     }
     
 }

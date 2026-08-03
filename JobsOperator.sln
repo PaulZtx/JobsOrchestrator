@@ -1,6 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JobsOperator", "JobsOperator\JobsOperator.csproj", "{73E092BD-2E59-48F8-9EE1-2595B1DDB26A}"
+	ProjectSection(ProjectDependencies) = postProject
+		{D0BBEE9D-4C11-49A1-86A0-6E6EFAA715A6} = {D0BBEE9D-4C11-49A1-86A0-6E6EFAA715A6}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jobs", "Jobs\Jobs.csproj", "{D0BBEE9D-4C11-49A1-86A0-6E6EFAA715A6}"
 EndProject

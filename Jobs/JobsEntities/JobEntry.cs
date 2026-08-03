@@ -15,15 +15,20 @@ public class JobEntry
     /// <summary>
     /// Реализация Job
     /// </summary>
-    public IJob Job { get; set; }
+    public required IJob Job { get; set; }
     
     /// <summary>
     /// Токен отмены
     /// </summary>
-    public CancellationTokenSource CancellationTokenSource { get; set; }
+    public required CancellationTokenSource CancellationTokenSource { get; set; }
     
+    /// <summary>
+    /// Runtime текущей попытки выполнения Job
+    /// </summary>
+    public required IJobRuntime Runtime { get; set; }
+
     /// <summary>
     /// Таска, в которой запущена джоба
     /// </summary>
-    public Task JobTask { get; set; }
+    public required Task JobTask { get; set; }
 }
