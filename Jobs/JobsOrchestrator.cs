@@ -23,14 +23,18 @@ public class JobsOrchestrator
         try
         {
             var jobId = Guid.NewGuid();
-            var cancellationTokenSource = new CancellationTokenSource();
             var builder = new BasicJobBuilder();
+            
+            var cancellationTokenSource = new CancellationTokenSource();
+            
             job.Configure(builder);
             var runtime = new BasicJobRuntime(builder.Build(), _serviceProvider);
+            
             var task = Task.Run(
                 () => runtime.RunAsync(cancellationTokenSource.Token),
                 _cancellationTokenSource.Token);
 
+            
             var jobEntry = new JobEntry()
             {
                 JobId = jobId, 

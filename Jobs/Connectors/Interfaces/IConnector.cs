@@ -1,4 +1,4 @@
-﻿namespace Jobs.Connectors;
+﻿namespace Jobs.Connectors.Interfaces;
 
 /// <summary>
 /// Коннектор для внешних источников
@@ -10,12 +10,4 @@ public interface IConnector
     /// </summary>
     /// <returns></returns>
     bool TryConnect();
-}
-
-/// <summary>
-/// Конфигурация Job
-/// </summary>
-public interface IConfiguration
-{
-    int GetOffset();
 }

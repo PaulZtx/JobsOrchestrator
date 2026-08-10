@@ -1,4 +1,5 @@
 ﻿using Jobs.Connectors;
+using Jobs.Connectors.Interfaces;
 
 namespace Jobs.JobsEntities.Interfaces;
 
@@ -30,4 +31,11 @@ public interface IJobBuilder
     /// <typeparam name="T"></typeparam>
     /// <returns></returns>
     SinkHandle<T> AddSink<T>(string name, Func<IServiceProvider, IConnectorSink<T>> factory);
+
+    /// <summary>
+    /// Включение чекпоинтов через интервал времени
+    /// </summary>
+    /// <param name="delay">Интервал времени</param>
+    /// <returns></returns>
+    IJobBuilder EnableCheckpoints(TimeSpan delay);
 }

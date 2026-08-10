@@ -1,4 +1,4 @@
-﻿namespace Jobs.Connectors;
+﻿namespace Jobs.Connectors.Interfaces;
 
 public interface IConnectorSink<T> : IConnector
 {

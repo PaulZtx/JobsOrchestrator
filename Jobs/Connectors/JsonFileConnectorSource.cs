@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Jobs.Connectors.Interfaces;
 
 namespace Jobs.Connectors;
 
@@ -46,6 +47,11 @@ public class JsonFileConnectorSource<T> : IConnectorSource<T>
             // Позиция означает: следующая строка, которую нужно прочитать.
             yield return new SourceRecord<T>(value, new SourcePosition(lineNumber));
         }
+    }
+
+    public Task CommitAsync(SourcePosition position, CancellationToken cancellationToken)
+    {
+        throw new NotImplementedException();
     }
 
     public bool TryConnect()

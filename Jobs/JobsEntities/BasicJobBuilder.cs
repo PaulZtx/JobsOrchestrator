@@ -1,14 +1,23 @@
 using Jobs.Connectors;
+using Jobs.Connectors.Interfaces;
 using Jobs.JobsEntities.Interfaces;
+using Jobs.JobsEntities.Interfaces.Sinks;
+using Jobs.JobsEntities.Interfaces.Sources;
 
 namespace Jobs.JobsEntities;
 
+/// <summary>
+/// Базовая реализация билдера для построения графа выполнения Jobs
+/// </summary>
 public class BasicJobBuilder : IJobBuilder
 {
     private readonly Dictionary<string, ISourceRegistration> _sources = [];
     private readonly Dictionary<string, ISinkRegistration> _sinks = [];
     private bool _isBuilt;
     
+    private CheckpointOptions? _checkpointOptions;
+
+    /// <inheritdoc />
     public SourceHandle<T> AddSource<T>(string name, Func<IServiceProvider, IConnectorSource<T>> factory)
     {
         EnsureNotBuilt();
@@ -21,9 +30,9 @@ public class BasicJobBuilder : IJobBuilder
         return new SourceHandle<T>(name);
     }
 
-    public void Process<T>(
-        SourceHandle<T> source,
-        Func<SourceRecord<T>, CancellationToken, Task> handler)
+
+    /// <inheritdoc />
+    public void Process<T>(SourceHandle<T> source, Func<SourceRecord<T>, CancellationToken, Task> handler)
     {
         EnsureNotBuilt();
         ArgumentNullException.ThrowIfNull(source);
@@ -38,6 +47,7 @@ public class BasicJobBuilder : IJobBuilder
         typedRegistration.AddHandler(handler);
     }
 
+    /// <inheritdoc />
     public SinkHandle<T> AddSink<T>(string name, Func<IServiceProvider, IConnectorSink<T>> factory)
     {
         EnsureNotBuilt();
@@ -50,15 +60,42 @@ public class BasicJobBuilder : IJobBuilder
         return new SinkHandle<T>(name);
     }
 
+    public IJobBuilder EnableCheckpoints(TimeSpan delay)
+    {
+        EnsureNotBuilt();
+
+        if (delay < TimeSpan.FromMilliseconds(1))
+            throw new ArgumentOutOfRangeException(nameof(delay), "Checkpoint interval must be at least 1 millisecond.");
+
+        if (delay.TotalMilliseconds > int.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(delay), "Checkpoint interval is too large.");
+
+        _checkpointOptions = new CheckpointOptions
+        {
+            Enabled = true,
+            DelayMillisecond = checked((int)delay.TotalMilliseconds)
+        };
+
+        return this;
+    }
+
+    /// <summary>
+    /// Создание Job и всех зависимостей
+    /// </summary>
+    /// <returns></returns>
     internal JobDefinition Build()
     {
         EnsureNotBuilt();
         _isBuilt = true;
 
         var sources = _sources.Values.Select(source => source.Build()).ToArray();
-        return new JobDefinition(sources);
+        return new JobDefinition(sources, _checkpointOptions);
     }
 
+    /// <summary>
+    /// Защита от повторной сборки
+    /// </summary>
+    /// <exception cref="InvalidOperationException"></exception>
     private void EnsureNotBuilt()
     {
         if (_isBuilt)

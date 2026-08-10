@@ -1,4 +1,4 @@
-﻿namespace Jobs.Connectors;
+﻿namespace Jobs.Connectors.Interfaces;
 
 public interface IConnectorSource<T> : IConnector
 {
@@ -7,4 +7,6 @@ public interface IConnectorSource<T> : IConnector
     /// </summary>
     /// <returns></returns>
     IAsyncEnumerable<SourceRecord<T>> ReadNextAsync(SourcePosition position, CancellationToken cancellationToken);
+    
+    Task CommitAsync(SourcePosition position, CancellationToken cancellationToken);
 }
