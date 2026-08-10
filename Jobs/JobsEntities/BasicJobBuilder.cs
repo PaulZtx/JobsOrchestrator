@@ -1,8 +1,10 @@
 using Jobs.Connectors;
 using Jobs.Connectors.Interfaces;
 using Jobs.JobsEntities.Interfaces;
-using Jobs.JobsEntities.Interfaces.Sinks;
-using Jobs.JobsEntities.Interfaces.Sources;
+using Jobs.Sinks;
+using Jobs.Sinks.Interfaces;
+using Jobs.Sources;
+using Jobs.Sources.Interfaces;
 
 namespace Jobs.JobsEntities;
 

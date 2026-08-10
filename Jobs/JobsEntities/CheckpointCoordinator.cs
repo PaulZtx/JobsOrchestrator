@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Jobs.Connectors;
-using Jobs.JobsEntities.Interfaces.Sources;
+using Jobs.Sources.Interfaces;
 
 namespace Jobs.JobsEntities;
 
@@ -31,7 +31,7 @@ public class CheckpointCoordinator
                 var data = JsonSerializer.Serialize(sourcePositions);
                 var bytes = Encoding.UTF8.GetBytes(data);
 
-                await using var stream = File.Create(options.PathToFile);
+                await using var stream = File.Create(options.JobStartOptions.CheckpointPath);
                 await stream.WriteAsync(bytes);
                 await stream.FlushAsync();
             }
@@ -69,7 +69,7 @@ public class CheckpointOptions
 
 public class CheckpointCoordinatorOptions
 {
-    public string PathToFile { get; set; }
+    public JobStartOptions JobStartOptions { get; set; }
     
-    public CheckpointOptions? CheckpointOptions { get; set; }
+    public CheckpointOptions CheckpointOptions { get; set; }
 }

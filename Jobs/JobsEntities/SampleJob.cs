@@ -9,7 +9,8 @@ public class SampleJob : IJob
 
     public void Configure(IJobBuilder builder)
     {
-        var names = builder.AddSource(
+        var names = builder.EnableCheckpoints(new TimeSpan(0, 0, 10))
+            .AddSource(
             "File",
             _ => new JsonFileConnectorSource<Test>(Path.Combine(AppContext.BaseDirectory, "Test.json")));
 

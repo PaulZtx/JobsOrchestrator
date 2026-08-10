@@ -1,5 +1,7 @@
 ﻿using Jobs.Connectors;
 using Jobs.Connectors.Interfaces;
+using Jobs.Sinks;
+using Jobs.Sources;
 
 namespace Jobs.JobsEntities.Interfaces;
 

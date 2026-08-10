@@ -1,4 +1,4 @@
-namespace Jobs.JobsEntities.Interfaces.Sources;
+namespace Jobs.Sources.Interfaces;
 
 /// <summary>
 /// Регистратор источников

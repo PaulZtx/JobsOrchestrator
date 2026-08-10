@@ -10,4 +10,10 @@
       <PackageReference Include="Confluent.Kafka" Version="2.15.0" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Update="appsetting.json">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
 </Project>

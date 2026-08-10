@@ -1,6 +1,6 @@
 using System.Runtime.ExceptionServices;
 using Jobs.JobsEntities.Interfaces;
-using Jobs.JobsEntities.Interfaces.Sources;
+using Jobs.Sources.Interfaces;
 
 namespace Jobs.JobsEntities;
 

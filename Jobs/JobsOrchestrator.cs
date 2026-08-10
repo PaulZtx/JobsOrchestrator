@@ -17,7 +17,7 @@ public class JobsOrchestrator
         _serviceProvider = serviceProvider ?? EmptyServiceProvider.Instance;
     }
 
-    public OrchestratorStatus TryAddJob(IJob job)
+    public OrchestratorStatus TryAddJob(IJob job, JobStartOptions? jobStartOptions = null)
     {
         var status = new OrchestratorStatus();
         try

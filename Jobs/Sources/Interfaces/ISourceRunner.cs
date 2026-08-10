@@ -1,6 +1,6 @@
 using Jobs.Connectors;
 
-namespace Jobs.JobsEntities.Interfaces.Sources;
+namespace Jobs.Sources.Interfaces;
 
 /// <summary>
 /// Обработчик источника данных
