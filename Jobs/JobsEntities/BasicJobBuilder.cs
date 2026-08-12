@@ -62,6 +62,12 @@ public class BasicJobBuilder : IJobBuilder
         return new SinkHandle<T>(name);
     }
 
+    /// <summary>
+    /// Включение чекпоинтов
+    /// </summary>
+    /// <param name="delay">Задержка между созданием чекпоинтов</param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
     public IJobBuilder EnableCheckpoints(TimeSpan delay)
     {
         EnsureNotBuilt();

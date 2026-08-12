@@ -1,14 +1,22 @@
+using Jobs.Connectors;
+
 namespace Jobs.Sources.Interfaces;
 
 /// <summary>
-/// Определение источника данных
+/// Описывает источник данных задания
 /// </summary>
 internal interface ISourceDefinition
 {
     /// <summary>
-    /// Формирование раннера для обработки данных с источника
+    /// Наименование источника
     /// </summary>
-    /// <param name="serviceProvider"></param>
-    /// <returns></returns>
-    ISourceRunner CreateRunner(IServiceProvider serviceProvider);
+    string Name { get; }
+
+    /// <summary>
+    /// Создает обработчик источника с заданной начальной позицией
+    /// </summary>
+    /// <param name="serviceProvider">Провайдер сервисов</param>
+    /// <param name="sourcePosition">Начальная позиция источника</param>
+    /// <returns>Обработчик источника</returns>
+    ISourceRunner CreateRunner(IServiceProvider serviceProvider, SourcePosition sourcePosition);
 }

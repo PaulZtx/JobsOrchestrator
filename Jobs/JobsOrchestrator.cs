@@ -1,15 +1,23 @@
 ﻿using System.Collections.Concurrent;
+using Jobs.Enums;
 using Jobs.JobsEntities;
 using Jobs.JobsEntities.Interfaces;
 
 namespace Jobs;
 
+/// <summary>
+/// Управляет запуском и остановкой заданий
+/// </summary>
 public class JobsOrchestrator
 {
     private readonly ConcurrentDictionary<Guid, JobEntry> _jobs;
     private readonly CancellationTokenSource _cancellationTokenSource;
     private readonly IServiceProvider _serviceProvider;
-    
+
+    /// <summary>
+    /// Создает оркестратор заданий
+    /// </summary>
+    /// <param name="serviceProvider">Провайдер сервисов</param>
     public JobsOrchestrator(IServiceProvider? serviceProvider = null)
     {
         _jobs = [];
@@ -17,6 +25,12 @@ public class JobsOrchestrator
         _serviceProvider = serviceProvider ?? EmptyServiceProvider.Instance;
     }
 
+    /// <summary>
+    /// Добавляет и запускает задание
+    /// </summary>
+    /// <param name="job">Задание</param>
+    /// <param name="jobStartOptions">Параметры запуска</param>
+    /// <returns>Результат добавления задания</returns>
     public OrchestratorStatus TryAddJob(IJob job, JobStartOptions? jobStartOptions = null)
     {
         var status = new OrchestratorStatus();
@@ -24,11 +38,16 @@ public class JobsOrchestrator
         {
             var jobId = Guid.NewGuid();
             var builder = new BasicJobBuilder();
-            
-            var cancellationTokenSource = new CancellationTokenSource();
-            
+
             job.Configure(builder);
-            var runtime = new BasicJobRuntime(builder.Build(), _serviceProvider);
+            var definition = builder.Build();
+            var resolvedStartOptions = ResolveStartOptions(
+                jobId,
+                definition.CheckpointOptions,
+                jobStartOptions);
+
+            var cancellationTokenSource = new CancellationTokenSource();
+            var runtime = new BasicJobRuntime(definition, _serviceProvider, resolvedStartOptions);
             
             var task = Task.Run(
                 () => runtime.RunAsync(cancellationTokenSource.Token),
@@ -49,6 +68,7 @@ public class JobsOrchestrator
             // Log
             
             status.JobId = jobId;
+            status.CheckpointPath = resolvedStartOptions?.CheckpointPath;
             Console.WriteLine($"Job {jobId} added");
             return status;
         }
@@ -61,6 +81,11 @@ public class JobsOrchestrator
         }
     }
 
+    /// <summary>
+    /// Останавливает и удаляет задание
+    /// </summary>
+    /// <param name="jobId">Идентификатор задания</param>
+    /// <returns>Признак успешного удаления</returns>
     public async Task<bool> TryRemoveJob(Guid jobId)
     {
         try
@@ -82,11 +107,70 @@ public class JobsOrchestrator
         }
     }
 
+    /// <summary>
+    /// Проверяет и дополняет параметры запуска задания
+    /// </summary>
+    /// <param name="jobId">Идентификатор задания</param>
+    /// <param name="checkpointOptions">Параметры контрольных точек</param>
+    /// <param name="requestedOptions">Запрошенные параметры запуска</param>
+    /// <returns>Проверенные параметры запуска</returns>
+    private static JobStartOptions? ResolveStartOptions(
+        Guid jobId,
+        CheckpointOptions? checkpointOptions,
+        JobStartOptions? requestedOptions)
+    {
+        if (checkpointOptions is not { Enabled: true })
+        {
+            if (requestedOptions is not null)
+            {
+                throw new InvalidOperationException(
+                    "Checkpoint start options were provided, but checkpoints are not enabled for the job.");
+            }
+
+            return null;
+        }
+
+        requestedOptions ??= new JobStartOptions();
+
+        if (!Enum.IsDefined(requestedOptions.RestoreMode))
+            throw new ArgumentOutOfRangeException(nameof(requestedOptions.RestoreMode));
+
+        var hasPath = !string.IsNullOrWhiteSpace(requestedOptions.CheckpointPath);
+        if (!hasPath && requestedOptions.RestoreMode == CheckpointRestoreMode.ResumeOnly)
+        {
+            throw new ArgumentException(
+                "Checkpoint path must be provided for ResumeOnly mode.",
+                nameof(requestedOptions));
+        }
+
+        var checkpointPath = hasPath
+            ? Path.GetFullPath(requestedOptions.CheckpointPath!, AppContext.BaseDirectory)
+            : Path.Combine(
+                AppContext.BaseDirectory,
+                "checkpoints",
+                $"{jobId:N}.json");
+
+        if (Directory.Exists(checkpointPath) || string.IsNullOrWhiteSpace(Path.GetFileName(checkpointPath)))
+            throw new ArgumentException($"Checkpoint path '{checkpointPath}' must point to a file.", nameof(requestedOptions));
+
+        if (requestedOptions.RestoreMode == CheckpointRestoreMode.ResumeOnly && !File.Exists(checkpointPath))
+            throw new FileNotFoundException("Checkpoint file was not found.", checkpointPath);
+
+        if (requestedOptions.RestoreMode == CheckpointRestoreMode.CreateNew && File.Exists(checkpointPath))
+            throw new IOException($"Checkpoint file '{checkpointPath}' already exists.");
+
+        return new JobStartOptions
+        {
+            CheckpointPath = checkpointPath,
+            RestoreMode = requestedOptions.RestoreMode
+        };
+    }
+
     private sealed class EmptyServiceProvider : IServiceProvider
     {
         public static EmptyServiceProvider Instance { get; } = new();
 
+        /// <inheritdoc />
         public object? GetService(Type serviceType) => null;
     }
-    
 }

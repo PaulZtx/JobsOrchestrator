@@ -3,43 +3,40 @@ using Jobs.Connectors;
 namespace Jobs.Sources.Interfaces;
 
 /// <summary>
-/// Обработчик источника данных
+/// Управляет чтением и обработкой данных одного источника
 /// </summary>
 public interface ISourceRunner
 {
     /// <summary>
-    /// Наименование обработчика
+    /// Наименование источника
     /// </summary>
     string Name { get; }
-    
+
     /// <summary>
-    /// Запуск задачи
+    /// Запускает чтение и обработку данных
     /// </summary>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
+    /// <param name="cancellationToken">Токен отмены</param>
     Task RunAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Приостановить обработчик
+    /// Приостанавливает прием новых записей и ожидает обработки принятых
     /// </summary>
-    /// <returns></returns>
-    Task PauseAsync();
-    
+    /// <param name="cancellationToken">Токен отмены</param>
+    Task PauseAsync(CancellationToken cancellationToken);
+
     /// <summary>
-    /// Возобновить работу
+    /// Возобновляет прием новых записей
     /// </summary>
-    /// <returns></returns>
     Task ResumeAsync();
-    
+
     /// <summary>
-    /// Остановить выполнение
+    /// Останавливает обработчик источника
     /// </summary>
-    /// <returns></returns>
     Task StopAsync();
-    
+
     /// <summary>
-    /// Зафиксировать состояние
+    /// Возвращает текущую обработанную позицию источника
     /// </summary>
-    /// <returns></returns>
+    /// <returns>Текущая позиция источника</returns>
     Task<SourcePosition> CaptureStateAsync();
 }

@@ -7,6 +7,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JobsOperator", "JobsOperato
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jobs", "Jobs\Jobs.csproj", "{D0BBEE9D-4C11-49A1-86A0-6E6EFAA715A6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestBuilds", "TestBuilds\TestBuilds.csproj", "{95EF07FB-FC66-4451-A873-333420F09C53}"
+	ProjectSection(ProjectDependencies) = postProject
+		{D0BBEE9D-4C11-49A1-86A0-6E6EFAA715A6} = {D0BBEE9D-4C11-49A1-86A0-6E6EFAA715A6}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,5 +26,9 @@ Global
 		{D0BBEE9D-4C11-49A1-86A0-6E6EFAA715A6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D0BBEE9D-4C11-49A1-86A0-6E6EFAA715A6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D0BBEE9D-4C11-49A1-86A0-6E6EFAA715A6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{95EF07FB-FC66-4451-A873-333420F09C53}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{95EF07FB-FC66-4451-A873-333420F09C53}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{95EF07FB-FC66-4451-A873-333420F09C53}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{95EF07FB-FC66-4451-A873-333420F09C53}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

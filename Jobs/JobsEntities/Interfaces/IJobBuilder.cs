@@ -20,8 +20,8 @@ public interface IJobBuilder
     SourceHandle<T> AddSource<T>(string name, Func<IServiceProvider, IConnectorSource<T>> factory);
 
     /// <summary>
-    /// Добавить обработчик записей из источника.
-    /// Циклом чтения и вызовом обработчика владеет runtime.
+    /// Добавить обработчик записей из источника
+    /// Циклом чтения и вызовом обработчика владеет runtime
     /// </summary>
     void Process<T>(SourceHandle<T> source, Func<SourceRecord<T>, CancellationToken, Task> handler);
 

@@ -1,7 +1,7 @@
 ﻿using Jobs.Connectors;
 using Jobs.JobsEntities.Interfaces;
 
-namespace Jobs.JobsEntities;
+namespace TestBuilds;
 
 public class SampleJob : IJob
 {
@@ -14,6 +14,12 @@ public class SampleJob : IJob
             "File",
             _ => new JsonFileConnectorSource<Test>(Path.Combine(AppContext.BaseDirectory, "Test.json")));
 
+        builder.Process(names, (record, _) =>
+        {
+            Console.WriteLine(record.Value);
+            return Task.CompletedTask;
+        });
+        
         builder.Process(names, (record, _) =>
         {
             Console.WriteLine(record.Value);

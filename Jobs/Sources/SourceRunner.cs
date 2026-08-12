@@ -25,6 +25,7 @@ internal sealed class SourceRunner<T>(
 
     public string Name => sourceName;
 
+    /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         if (!connector.TryConnect())
@@ -59,9 +60,9 @@ internal sealed class SourceRunner<T>(
     }
 
     /// <summary>
-    /// Чтение из коннектора и передача данных в канал
+    /// Читает записи из коннектора и передает их в канал
     /// </summary>
-    /// <param name="writer">Писатель</param>
+    /// <param name="writer">Писатель канала</param>
     /// <param name="cancellationToken">Токен отмены</param>
     private async Task ProduceAsync(ChannelWriter<SourceRecord<T>> writer, CancellationToken cancellationToken)
     {
@@ -104,6 +105,11 @@ internal sealed class SourceRunner<T>(
         }
     }
 
+    /// <summary>
+    /// Читает записи из канала и вызывает обработчики
+    /// </summary>
+    /// <param name="reader">Читатель канала</param>
+    /// <param name="cancellationToken">Токен отмены</param>
     private async Task ConsumeAsync(
         ChannelReader<SourceRecord<T>> reader,
         CancellationToken cancellationToken)
@@ -126,16 +132,28 @@ internal sealed class SourceRunner<T>(
         }
     }
 
-    public async Task PauseAsync()
+    /// <inheritdoc />
+    public async Task PauseAsync(CancellationToken cancellationToken)
     {
         if (!_isPaused)
         {
-            await _pauseSemaphore.WaitAsync();
+            await _pauseSemaphore.WaitAsync(cancellationToken);
             _isPaused = true;
-            await WaitUntilDrainedAsync();
+
+            try
+            {
+                await WaitUntilDrainedAsync().WaitAsync(cancellationToken);
+            }
+            catch
+            {
+                _isPaused = false;
+                _pauseSemaphore.Release();
+                throw;
+            }
         }
     }
 
+    /// <inheritdoc />
     public Task ResumeAsync()
     {
         if (_isPaused)
@@ -147,6 +165,7 @@ internal sealed class SourceRunner<T>(
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc />
     public async Task StopAsync()
     {
         if (_sourceCancellation is null)
@@ -161,15 +180,19 @@ internal sealed class SourceRunner<T>(
         }
         catch (OperationCanceledException)
         {
-            // Cancellation is the expected stop path.
+            // Отмена является ожидаемым способом остановки
         }
     }
 
+    /// <inheritdoc />
     public Task<SourcePosition> CaptureStateAsync()
     {
         return Task.FromResult(currentPosition);
     }
 
+    /// <summary>
+    /// Регистрирует запись как ожидающую завершения обработки
+    /// </summary>
     private void RegisterPendingRecord()
     {
         lock (_drainLock)
@@ -183,6 +206,9 @@ internal sealed class SourceRunner<T>(
         }
     }
 
+    /// <summary>
+    /// Отмечает завершение обработки ожидающей записи
+    /// </summary>
     private void CompletePendingRecord()
     {
         lock (_drainLock)
@@ -194,12 +220,20 @@ internal sealed class SourceRunner<T>(
         }
     }
 
+    /// <summary>
+    /// Возвращает задачу ожидания обработки всех принятых записей
+    /// </summary>
+    /// <returns>Задача ожидания</returns>
     private Task WaitUntilDrainedAsync()
     {
         lock (_drainLock)
             return _drained.Task;
     }
 
+    /// <summary>
+    /// Создает завершенный источник ожидания обработки
+    /// </summary>
+    /// <returns>Завершенный источник ожидания</returns>
     private static TaskCompletionSource<bool> CreateCompletedDrainSource()
     {
         var source = new TaskCompletionSource<bool>(
