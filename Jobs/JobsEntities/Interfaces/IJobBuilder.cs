@@ -2,6 +2,7 @@
 using Jobs.Connectors.Interfaces;
 using Jobs.Sinks;
 using Jobs.Sources;
+using Jobs.States.Interfaces;
 
 namespace Jobs.JobsEntities.Interfaces;
 
@@ -33,6 +34,14 @@ public interface IJobBuilder
     /// <typeparam name="T"></typeparam>
     /// <returns></returns>
     SinkHandle<T> AddSink<T>(string name, Func<IServiceProvider, IConnectorSink<T>> factory);
+
+    /// <summary>
+    /// Регистрирует внутреннее состояние для заданного типа элементов
+    /// </summary>
+    /// <param name="name">Наименование состояния</param>
+    /// <typeparam name="T">Тип элементов состояния</typeparam>
+    /// <returns>Зарегистрированное состояние</returns>
+    IState<T> RegisterState<T>(string name);
 
     /// <summary>
     /// Включение чекпоинтов через интервал времени

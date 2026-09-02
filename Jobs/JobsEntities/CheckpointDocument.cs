@@ -1,4 +1,5 @@
 using Jobs.Connectors;
+using Jobs.States.Models;
 
 namespace Jobs.JobsEntities;
 
@@ -28,4 +29,9 @@ internal sealed class CheckpointDocument
     /// Позиции источников
     /// </summary>
     public Dictionary<string, SourcePosition> Sources { get; init; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Снимки внутренних состояний
+    /// </summary>
+    public Dictionary<string, StateSnapshot> States { get; init; } = new(StringComparer.Ordinal);
 }

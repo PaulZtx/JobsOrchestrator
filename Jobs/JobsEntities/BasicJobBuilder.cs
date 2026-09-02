@@ -5,6 +5,8 @@ using Jobs.Sinks;
 using Jobs.Sinks.Interfaces;
 using Jobs.Sources;
 using Jobs.Sources.Interfaces;
+using Jobs.States;
+using Jobs.States.Interfaces;
 
 namespace Jobs.JobsEntities;
 
@@ -15,6 +17,8 @@ public class BasicJobBuilder : IJobBuilder
 {
     private readonly Dictionary<string, ISourceRegistration> _sources = [];
     private readonly Dictionary<string, ISinkRegistration> _sinks = [];
+    private readonly StateRegistry _stateRegistry = new();
+
     private bool _isBuilt;
     
     private CheckpointOptions? _checkpointOptions;
@@ -87,6 +91,17 @@ public class BasicJobBuilder : IJobBuilder
         return this;
     }
 
+    /// <inheritdoc />
+    public IState<T> RegisterState<T>(string name)
+    {
+        EnsureNotBuilt();
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var state = new BagState<T>(name);
+        _stateRegistry.Register(state);
+        return state;
+    }
+
     /// <summary>
     /// Создание Job и всех зависимостей
     /// </summary>
@@ -97,7 +112,7 @@ public class BasicJobBuilder : IJobBuilder
         _isBuilt = true;
 
         var sources = _sources.Values.Select(source => source.Build()).ToArray();
-        return new JobDefinition(sources, _checkpointOptions);
+        return new JobDefinition(sources, _checkpointOptions, _stateRegistry);
     }
 
     /// <summary>

@@ -9,19 +9,16 @@ public class SampleJob : IJob
 
     public void Configure(IJobBuilder builder)
     {
-        var names = builder.EnableCheckpoints(new TimeSpan(0, 0, 10))
+        var names = builder.EnableCheckpoints(TimeSpan.FromSeconds(1))
             .AddSource(
             "File",
             _ => new JsonFileConnectorSource<Test>(Path.Combine(AppContext.BaseDirectory, "Test.json")));
 
+        var state = builder.RegisterState<Test>("test-state");
+
         builder.Process(names, (record, _) =>
         {
-            Console.WriteLine(record.Value);
-            return Task.CompletedTask;
-        });
-        
-        builder.Process(names, (record, _) =>
-        {
+            state.Push(record.Value);
             Console.WriteLine(record.Value);
             return Task.CompletedTask;
         });

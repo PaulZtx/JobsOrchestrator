@@ -2,13 +2,15 @@ using System.Text.Json;
 using Jobs.Connectors;
 using Jobs.Enums;
 using Jobs.Sources.Interfaces;
+using Jobs.States;
+using Jobs.States.Models;
 
 namespace Jobs.JobsEntities;
 
 /// <summary>
 /// Координирует восстановление и сохранение контрольных точек
 /// </summary>
-public sealed class CheckpointCoordinator
+internal sealed class CheckpointCoordinator
 {
     private const int CurrentFormatVersion = 1;
 
@@ -43,11 +45,11 @@ public sealed class CheckpointCoordinator
     }
 
     /// <summary>
-    /// Восстанавливает позиции источников из контрольной точки
+    /// Восстанавливает контрольную точку из файла
     /// </summary>
     /// <param name="cancellationToken">Токен отмены</param>
-    /// <returns>Позиции источников</returns>
-    public async Task<IReadOnlyDictionary<string, SourcePosition>> RestoreAsync(CancellationToken cancellationToken)
+    /// <returns>Восстановленная контрольная точка</returns>
+    public async Task<CheckpointDocument> RestoreAsync(CancellationToken cancellationToken)
     {
         var path = _checkpointPath;
         var restoreMode = _options.JobStartOptions.RestoreMode;
@@ -58,7 +60,7 @@ public sealed class CheckpointCoordinator
             if (checkpointExists)
                 throw new IOException($"Checkpoint file '{path}' already exists.");
 
-            return EmptyPositions();
+            return EmptyCheckpoint();
         }
 
         if (!checkpointExists)
@@ -66,7 +68,7 @@ public sealed class CheckpointCoordinator
             if (restoreMode == CheckpointRestoreMode.ResumeOnly)
                 throw new FileNotFoundException("Checkpoint file was not found.", path);
 
-            return EmptyPositions();
+            return EmptyCheckpoint();
         }
 
         try
@@ -91,7 +93,16 @@ public sealed class CheckpointCoordinator
                     $"Checkpoint file '{path}' has unsupported format version {checkpoint.Version}.");
             }
 
-            return ValidatePositions(path, checkpoint.Sources);
+            var sourcePositions = ValidatePositions(path, checkpoint.Sources);
+            var stateSnapshots = ValidateStateSnapshots(path, checkpoint.States);
+
+            return new CheckpointDocument
+            {
+                Version = checkpoint.Version,
+                CreatedAtUtc = checkpoint.CreatedAtUtc,
+                Sources = sourcePositions,
+                States = stateSnapshots
+            };
         }
         catch (JsonException exception)
         {
@@ -103,25 +114,32 @@ public sealed class CheckpointCoordinator
     /// Периодически сохраняет контрольные точки источников
     /// </summary>
     /// <param name="sourceRunners">Обработчики источников</param>
+    /// <param name="stateRegistry">Реестр внутренних состояний</param>
     /// <param name="cancellationToken">Токен отмены</param>
-    public async Task RunAsync(IReadOnlyList<ISourceRunner> sourceRunners, CancellationToken cancellationToken)
+    public async Task RunAsync(
+        IReadOnlyList<ISourceRunner> sourceRunners,
+        StateRegistry stateRegistry,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(sourceRunners);
+        ArgumentNullException.ThrowIfNull(stateRegistry);
 
         using var timer = new PeriodicTimer(
             TimeSpan.FromMilliseconds(_options.CheckpointOptions.DelayMillisecond));
 
         while (await timer.WaitForNextTickAsync(cancellationToken))
-            await CaptureAsync(sourceRunners, cancellationToken);
+            await CaptureAsync(sourceRunners, stateRegistry, cancellationToken);
     }
 
     /// <summary>
     /// Приостанавливает источники и фиксирует их согласованные позиции
     /// </summary>
     /// <param name="sourceRunners">Обработчики источников</param>
+    /// <param name="stateRegistry">Реестр внутренних состояний</param>
     /// <param name="cancellationToken">Токен отмены</param>
     private async Task CaptureAsync(
         IReadOnlyList<ISourceRunner> sourceRunners,
+        StateRegistry stateRegistry,
         CancellationToken cancellationToken)
     {
         try
@@ -139,8 +157,11 @@ public sealed class CheckpointCoordinator
                 pair => pair.Value,
                 StringComparer.Ordinal);
 
+            var stateSnapshots = await stateRegistry.CaptureAllAsync(cancellationToken);
+
             ValidatePositions(_checkpointPath, sourcePositions);
-            await SaveAsync(sourcePositions, cancellationToken);
+            ValidateStateSnapshots(_checkpointPath, stateSnapshots);
+            await SaveAsync(sourcePositions, stateSnapshots, cancellationToken);
         }
         finally
         {
@@ -152,9 +173,11 @@ public sealed class CheckpointCoordinator
     /// Атомарно сохраняет контрольную точку в файл
     /// </summary>
     /// <param name="sourcePositions">Позиции источников</param>
+    /// <param name="stateSnapshots">Снимки внутренних состояний</param>
     /// <param name="cancellationToken">Токен отмены</param>
     private async Task SaveAsync(
         IReadOnlyDictionary<string, SourcePosition> sourcePositions,
+        IReadOnlyDictionary<string, StateSnapshot> stateSnapshots,
         CancellationToken cancellationToken)
     {
         var checkpointPath = _checkpointPath;
@@ -167,7 +190,8 @@ public sealed class CheckpointCoordinator
         {
             Version = CurrentFormatVersion,
             CreatedAtUtc = DateTimeOffset.UtcNow,
-            Sources = new Dictionary<string, SourcePosition>(sourcePositions, StringComparer.Ordinal)
+            Sources = new Dictionary<string, SourcePosition>(sourcePositions, StringComparer.Ordinal),
+            States = new Dictionary<string, StateSnapshot>(stateSnapshots, StringComparer.Ordinal)
         };
 
         var temporaryPath = Path.Combine(
@@ -209,7 +233,7 @@ public sealed class CheckpointCoordinator
     /// <param name="path">Путь к контрольной точке</param>
     /// <param name="positions">Позиции источников</param>
     /// <returns>Проверенные позиции источников</returns>
-    private static IReadOnlyDictionary<string, SourcePosition> ValidatePositions(
+    private static Dictionary<string, SourcePosition> ValidatePositions(
         string path,
         Dictionary<string, SourcePosition>? positions)
     {
@@ -229,11 +253,40 @@ public sealed class CheckpointCoordinator
     }
 
     /// <summary>
-    /// Создает пустой набор позиций источников
+    /// Проверяет корректность снимков внутренних состояний
     /// </summary>
-    /// <returns>Пустой набор позиций источников</returns>
-    private static IReadOnlyDictionary<string, SourcePosition> EmptyPositions()
+    /// <param name="path">Путь к контрольной точке</param>
+    /// <param name="snapshots">Снимки внутренних состояний</param>
+    /// <returns>Проверенные снимки внутренних состояний</returns>
+    private static Dictionary<string, StateSnapshot> ValidateStateSnapshots(
+        string path,
+        Dictionary<string, StateSnapshot>? snapshots)
     {
-        return new Dictionary<string, SourcePosition>(StringComparer.Ordinal);
+        if (snapshots is null)
+            throw new InvalidDataException($"Checkpoint file '{path}' does not contain state snapshots");
+
+        foreach (var (stateName, snapshot) in snapshots)
+        {
+            if (string.IsNullOrWhiteSpace(stateName))
+                throw new InvalidDataException($"Checkpoint file '{path}' contains an empty state name");
+
+            if (snapshot is null || snapshot.Version < 1 || snapshot.Payload is null)
+                throw new InvalidDataException($"Checkpoint for state '{stateName}' contains an invalid snapshot");
+        }
+
+        return new Dictionary<string, StateSnapshot>(snapshots, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Создает пустую контрольную точку
+    /// </summary>
+    /// <returns>Пустая контрольная точка</returns>
+    private static CheckpointDocument EmptyCheckpoint()
+    {
+        return new CheckpointDocument
+        {
+            Version = CurrentFormatVersion,
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
     }
 }

@@ -48,7 +48,7 @@ public class JobsOrchestrator
 
             var cancellationTokenSource = new CancellationTokenSource();
             var runtime = new BasicJobRuntime(definition, _serviceProvider, resolvedStartOptions);
-            
+
             var task = Task.Run(
                 () => runtime.RunAsync(cancellationTokenSource.Token),
                 _cancellationTokenSource.Token);

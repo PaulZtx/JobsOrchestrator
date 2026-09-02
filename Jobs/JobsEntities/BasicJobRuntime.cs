@@ -24,14 +24,21 @@ internal sealed class BasicJobRuntime(
         using var runtimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         var checkpointCoordinator = CreateCheckpointCoordinator();
-        var restoredPositions = checkpointCoordinator is null
-            ? EmptyPositions()
+        var restoredCheckpoint = checkpointCoordinator is null
+            ? null
             : await checkpointCoordinator.RestoreAsync(runtimeCancellation.Token);
+
+        if (restoredCheckpoint is not null)
+        {
+            await definition.StateRegistry.RestoreAllAsync(
+                restoredCheckpoint.States,
+                runtimeCancellation.Token);
+        }
 
         _sourceRunners = definition.Sources
             .Select(source => source.CreateRunner(
                 serviceProvider,
-                restoredPositions.GetValueOrDefault(source.Name) ?? new SourcePosition(0)))
+                restoredCheckpoint?.Sources.GetValueOrDefault(source.Name) ?? new SourcePosition(0)))
             .ToArray();
 
         var sourceTasks = _sourceRunners
@@ -40,6 +47,7 @@ internal sealed class BasicJobRuntime(
 
         var coordinatorTask = checkpointCoordinator?.RunAsync(
             _sourceRunners,
+            definition.StateRegistry,
             runtimeCancellation.Token);
 
         try
@@ -107,15 +115,6 @@ internal sealed class BasicJobRuntime(
             CheckpointOptions = checkpointOptions,
             JobStartOptions = jobStartOptions
         });
-    }
-
-    /// <summary>
-    /// Создает пустой набор позиций источников
-    /// </summary>
-    /// <returns>Пустой набор позиций источников</returns>
-    private static IReadOnlyDictionary<string, SourcePosition> EmptyPositions()
-    {
-        return new Dictionary<string, SourcePosition>(StringComparer.Ordinal);
     }
 
     /// <summary>
