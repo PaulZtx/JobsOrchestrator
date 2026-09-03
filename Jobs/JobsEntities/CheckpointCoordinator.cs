@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Jobs.Connectors;
 using Jobs.Enums;
-using Jobs.Sources.Interfaces;
+using Jobs.Pipelines.Interfaces;
 using Jobs.States;
 using Jobs.States.Models;
 
@@ -113,43 +113,43 @@ internal sealed class CheckpointCoordinator
     /// <summary>
     /// Периодически сохраняет контрольные точки источников
     /// </summary>
-    /// <param name="sourceRunners">Обработчики источников</param>
+    /// <param name="pipelineRunners">Обработчики конвейеров</param>
     /// <param name="stateRegistry">Реестр внутренних состояний</param>
     /// <param name="cancellationToken">Токен отмены</param>
     public async Task RunAsync(
-        IReadOnlyList<ISourceRunner> sourceRunners,
+        IReadOnlyList<IPipelineRunner> pipelineRunners,
         StateRegistry stateRegistry,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(sourceRunners);
+        ArgumentNullException.ThrowIfNull(pipelineRunners);
         ArgumentNullException.ThrowIfNull(stateRegistry);
 
         using var timer = new PeriodicTimer(
             TimeSpan.FromMilliseconds(_options.CheckpointOptions.DelayMillisecond));
 
         while (await timer.WaitForNextTickAsync(cancellationToken))
-            await CaptureAsync(sourceRunners, stateRegistry, cancellationToken);
+            await CaptureAsync(pipelineRunners, stateRegistry, cancellationToken);
     }
 
     /// <summary>
     /// Приостанавливает источники и фиксирует их согласованные позиции
     /// </summary>
-    /// <param name="sourceRunners">Обработчики источников</param>
+    /// <param name="pipelineRunners">Обработчики конвейеров</param>
     /// <param name="stateRegistry">Реестр внутренних состояний</param>
     /// <param name="cancellationToken">Токен отмены</param>
     private async Task CaptureAsync(
-        IReadOnlyList<ISourceRunner> sourceRunners,
+        IReadOnlyList<IPipelineRunner> pipelineRunners,
         StateRegistry stateRegistry,
         CancellationToken cancellationToken)
     {
         try
         {
-            await Task.WhenAll(sourceRunners.Select(runner => runner.PauseAsync(cancellationToken)));
+            await Task.WhenAll(pipelineRunners.Select(runner => runner.PauseAsync(cancellationToken)));
 
             var positions = await Task.WhenAll(
-                sourceRunners.Select(async runner =>
+                pipelineRunners.Select(async runner =>
                     new KeyValuePair<string, SourcePosition>(
-                        runner.Name,
+                        runner.SourceName,
                         await runner.CaptureStateAsync())));
 
             var sourcePositions = positions.ToDictionary(
@@ -165,7 +165,7 @@ internal sealed class CheckpointCoordinator
         }
         finally
         {
-            await Task.WhenAll(sourceRunners.Select(runner => runner.ResumeAsync()));
+            await Task.WhenAll(pipelineRunners.Select(runner => runner.ResumeAsync()));
         }
     }
 

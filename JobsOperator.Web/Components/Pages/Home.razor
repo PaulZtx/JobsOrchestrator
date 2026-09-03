@@ -1,0 +1,168 @@
+@page "/"
+@using JobsOperator.Web.Services
+@inject JobExecutionService JobExecutionService
+
+<PageTitle>JobsOperator</PageTitle>
+
+<header>
+    <span class="eyebrow">JobsOperator</span>
+    <h1>Запуск сборок</h1>
+    <p>Выберите DLL с реализацией <code>IJob</code>. Зависимости можно добавить тем же выбором.</p>
+</header>
+
+<section class="card upload-card">
+    <InputFile id="assembly-files"
+               OnChange="OnFilesSelected"
+               accept=".dll"
+               multiple />
+
+    @if (_selectedFiles.Count > 0)
+    {
+        <ul class="files" aria-label="Выбранные файлы">
+            @foreach (var file in _selectedFiles)
+            {
+                <li>
+                    <span>@file.Name</span>
+                    <small>@FormatSize(file.Size)</small>
+                </li>
+            }
+        </ul>
+    }
+
+    <button class="primary" disabled="@(_isStarting || _selectedFiles.Count == 0)" @onclick="StartAsync">
+        @(_isStarting ? "Запускаю…" : "Запустить")
+    </button>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <p class="message @(_hasError ? "error" : "success")" role="status">@_message</p>
+    }
+</section>
+
+@if (_runningJobs.Count > 0)
+{
+    <section class="jobs" aria-labelledby="running-title">
+        <div class="section-heading">
+            <h2 id="running-title">Передано на выполнение</h2>
+            <span>@_runningJobs.Count</span>
+        </div>
+
+        @foreach (var job in _runningJobs)
+        {
+            <article class="job-card">
+                <div>
+                    <strong>@job.JobType</strong>
+                    <span>@job.AssemblyName · @job.StartedAt.ToLocalTime().ToString("HH:mm:ss")</span>
+                    <code>@job.JobId</code>
+                </div>
+                <button class="secondary"
+                        disabled="@_stoppingJobs.Contains(job.JobId)"
+                        @onclick="() => StopAsync(job.JobId)">
+                    @(_stoppingJobs.Contains(job.JobId) ? "Останавливаю…" : "Остановить")
+                </button>
+            </article>
+        }
+    </section>
+}
+
+<p class="notice">Загруженная сборка выполняется внутри процесса сервера. Используйте интерфейс только для доверенных DLL.</p>
+
+@code {
+    private const int MaxFileCount = 20;
+    private IReadOnlyList<IBrowserFile> _selectedFiles = [];
+    private IReadOnlyList<RunningJobInfo> _runningJobs = [];
+    private readonly HashSet<Guid> _stoppingJobs = [];
+    private bool _isStarting;
+    private bool _hasError;
+    private string? _message;
+
+    protected override void OnInitialized() => RefreshJobs();
+
+    private void OnFilesSelected(InputFileChangeEventArgs args)
+    {
+        try
+        {
+            _selectedFiles = args.GetMultipleFiles(MaxFileCount);
+            _message = null;
+            _hasError = false;
+        }
+        catch (InvalidOperationException)
+        {
+            _selectedFiles = [];
+            _message = $"Можно выбрать не больше {MaxFileCount} файлов.";
+            _hasError = true;
+        }
+    }
+
+    private async Task StartAsync()
+    {
+        _isStarting = true;
+        _message = null;
+
+        try
+        {
+            var result = await JobExecutionService.StartAsync(_selectedFiles);
+            RefreshJobs();
+
+            _hasError = result.StartedJobs.Count == 0;
+            _message = BuildMessage(result);
+
+            if (result.StartedJobs.Count > 0)
+                _selectedFiles = [];
+        }
+        catch (Exception exception)
+        {
+            _hasError = true;
+            _message = exception.Message;
+        }
+        finally
+        {
+            _isStarting = false;
+        }
+    }
+
+    private async Task StopAsync(Guid jobId)
+    {
+        _stoppingJobs.Add(jobId);
+        _message = null;
+
+        try
+        {
+            var stopped = await JobExecutionService.StopAsync(jobId);
+            _hasError = !stopped;
+            _message = stopped ? "Задание остановлено." : "Не удалось остановить задание.";
+            RefreshJobs();
+        }
+        finally
+        {
+            _stoppingJobs.Remove(jobId);
+        }
+    }
+
+    private void RefreshJobs() => _runningJobs = JobExecutionService.GetRunningJobs();
+
+    private static string BuildMessage(StartJobsResult result)
+    {
+        var started = result.StartedJobs.Count switch
+        {
+            0 => "Ни одно задание не запущено.",
+            1 => "Задание передано оркестратору.",
+            _ => $"Оркестратору передано заданий: {result.StartedJobs.Count}."
+        };
+
+        return result.Errors.Count == 0
+            ? started
+            : $"{started} {string.Join(" ", result.Errors)}";
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024)
+            return $"{bytes} Б";
+
+        if (bytes < 1024 * 1024)
+            return $"{bytes / 1024d:F1} КБ";
+
+        return $"{bytes / 1024d / 1024d:F1} МБ";
+    }
+}

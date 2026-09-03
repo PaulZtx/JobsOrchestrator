@@ -1,77 +1,90 @@
-using Jobs.Connectors;
 using Jobs.Connectors.Interfaces;
 using Jobs.JobsEntities.Interfaces;
-using Jobs.Sinks;
-using Jobs.Sinks.Interfaces;
-using Jobs.Sources;
-using Jobs.Sources.Interfaces;
+using Jobs.Pipelines;
+using Jobs.Pipelines.Interfaces;
 using Jobs.States;
 using Jobs.States.Interfaces;
 
 namespace Jobs.JobsEntities;
 
 /// <summary>
-/// Базовая реализация билдера для построения графа выполнения Jobs
+/// Базовая реализация билдера для построения графа выполнения Jobs.
 /// </summary>
 public class BasicJobBuilder : IJobBuilder
 {
-    private readonly Dictionary<string, ISourceRegistration> _sources = [];
-    private readonly Dictionary<string, ISinkRegistration> _sinks = [];
+    private readonly List<IPipelineDefinition> _pipelines = [];
+    private readonly HashSet<string> _sourceNames = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _incompletePipelines = new(StringComparer.Ordinal);
     private readonly StateRegistry _stateRegistry = new();
 
     private bool _isBuilt;
-    
     private CheckpointOptions? _checkpointOptions;
 
     /// <inheritdoc />
-    public SourceHandle<T> AddSource<T>(string name, Func<IServiceProvider, IConnectorSource<T>> factory)
+    public ISourceStage<T> Source<T>(
+        string name,
+        Func<IServiceProvider, IConnectorSource<T>> factory)
     {
         EnsureNotBuilt();
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(factory);
 
-        if (!_sources.TryAdd(name, new SourceRegistration<T>(name, factory)))
+        if (!_sourceNames.Add(name))
             throw new InvalidOperationException($"Source '{name}' is already registered.");
 
-        return new SourceHandle<T>(name);
-    }
-
-
-    /// <inheritdoc />
-    public void Process<T>(SourceHandle<T> source, Func<SourceRecord<T>, CancellationToken, Task> handler)
-    {
-        EnsureNotBuilt();
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(handler);
-
-        if (!_sources.TryGetValue(source.Name, out var registration))
-            throw new InvalidOperationException($"Source '{source.Name}' is not registered.");
-
-        if (registration is not SourceRegistration<T> typedRegistration)
-            throw new InvalidOperationException($"Source '{source.Name}' has a different record type.");
-
-        typedRegistration.AddHandler(handler);
-    }
-
-    /// <inheritdoc />
-    public SinkHandle<T> AddSink<T>(string name, Func<IServiceProvider, IConnectorSink<T>> factory)
-    {
-        EnsureNotBuilt();
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentNullException.ThrowIfNull(factory);
-
-        if (!_sinks.TryAdd(name, new SinkRegistration<T>(name, factory)))
-            throw new InvalidOperationException($"Sink '{name}' is already registered.");
-
-        return new SinkHandle<T>(name);
+        _incompletePipelines.Add(name);
+        return new SourceStage<T>(this, name, factory);
     }
 
     /// <summary>
-    /// Включение чекпоинтов
+    /// Создает стадию обработанного потока.
     /// </summary>
-    /// <param name="delay">Задержка между созданием чекпоинтов</param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentOutOfRangeException"></exception>
+    internal IProcessedStage<TOutput> Process<TInput, TOutput>(
+        string sourceName,
+        Func<IServiceProvider, IConnectorSource<TInput>> sourceFactory,
+        string processName,
+        Func<TInput, ProcessContext, CancellationToken, ValueTask<TOutput>> processor)
+    {
+        EnsureNotBuilt();
+        ArgumentException.ThrowIfNullOrWhiteSpace(processName);
+        ArgumentNullException.ThrowIfNull(processor);
+
+        return new ProcessedStage<TInput, TOutput>(
+            this,
+            sourceName,
+            sourceFactory,
+            processName,
+            processor);
+    }
+
+    /// <summary>
+    /// Завершает описание конвейера и добавляет его в определение задания.
+    /// </summary>
+    internal void CompletePipeline<TInput, TOutput>(
+        string sourceName,
+        Func<IServiceProvider, IConnectorSource<TInput>> sourceFactory,
+        string processName,
+        Func<TInput, ProcessContext, CancellationToken, ValueTask<TOutput>> processor,
+        string sinkName,
+        Func<IServiceProvider, IConnectorSink<TOutput>> sinkFactory)
+    {
+        EnsureNotBuilt();
+        ArgumentException.ThrowIfNullOrWhiteSpace(sinkName);
+        ArgumentNullException.ThrowIfNull(sinkFactory);
+
+        if (!_incompletePipelines.Remove(sourceName))
+            throw new InvalidOperationException($"Pipeline for source '{sourceName}' is already completed.");
+
+        _pipelines.Add(new PipelineDefinition<TInput, TOutput>(
+            sourceName,
+            sourceFactory,
+            processName,
+            processor,
+            sinkName,
+            sinkFactory));
+    }
+
+    /// <inheritdoc />
     public IJobBuilder EnableCheckpoints(TimeSpan delay)
     {
         EnsureNotBuilt();
@@ -103,22 +116,22 @@ public class BasicJobBuilder : IJobBuilder
     }
 
     /// <summary>
-    /// Создание Job и всех зависимостей
+    /// Создает Job и все его зависимости.
     /// </summary>
-    /// <returns></returns>
     internal JobDefinition Build()
     {
         EnsureNotBuilt();
-        _isBuilt = true;
 
-        var sources = _sources.Values.Select(source => source.Build()).ToArray();
-        return new JobDefinition(sources, _checkpointOptions, _stateRegistry);
+        if (_incompletePipelines.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Pipelines for the following sources are incomplete: {string.Join(", ", _incompletePipelines)}.");
+        }
+
+        _isBuilt = true;
+        return new JobDefinition(_pipelines.ToArray(), _checkpointOptions, _stateRegistry);
     }
 
-    /// <summary>
-    /// Защита от повторной сборки
-    /// </summary>
-    /// <exception cref="InvalidOperationException"></exception>
     private void EnsureNotBuilt()
     {
         if (_isBuilt)
