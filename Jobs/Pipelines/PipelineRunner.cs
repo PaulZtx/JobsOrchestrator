@@ -6,8 +6,17 @@ using Jobs.Pipelines.Interfaces;
 namespace Jobs.Pipelines;
 
 /// <summary>
-/// Выполняет связанный конвейер чтения, обработки и записи.
+/// Выполняет связанный конвейер чтения, обработки и записи
 /// </summary>
+/// <typeparam name="TInput">Тип элементов источника</typeparam>
+/// <typeparam name="TOutput">Тип результатов обработчика</typeparam>
+/// <param name="sourceName">Имя источника</param>
+/// <param name="processName">Имя обработчика</param>
+/// <param name="sinkName">Имя принимающего узла</param>
+/// <param name="processor">Функция обработки элемента</param>
+/// <param name="source">Исходящий коннектор</param>
+/// <param name="sink">Принимающий коннектор</param>
+/// <param name="currentPosition">Начальная позиция источника</param>
 internal sealed class PipelineRunner<TInput, TOutput>(
     string sourceName,
     string processName,
@@ -29,8 +38,10 @@ internal sealed class PipelineRunner<TInput, TOutput>(
     private Task[] _workers = [];
     private CancellationTokenSource? _pipelineCancellation;
 
+    /// <inheritdoc />
     public string SourceName => sourceName;
 
+    /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         if (!sink.TryConnect())
@@ -67,6 +78,11 @@ internal sealed class PipelineRunner<TInput, TOutput>(
         }
     }
 
+    /// <summary>
+    /// Читает элементы источника и помещает их в канал
+    /// </summary>
+    /// <param name="writer">Канал для записи элементов</param>
+    /// <param name="cancellationToken">Токен отмены</param>
     private async Task ProduceAsync(
         ChannelWriter<SourceRecord<TInput>> writer,
         CancellationToken cancellationToken)
@@ -110,6 +126,11 @@ internal sealed class PipelineRunner<TInput, TOutput>(
         }
     }
 
+    /// <summary>
+    /// Обрабатывает элементы канала и передает результаты принимающему узлу
+    /// </summary>
+    /// <param name="reader">Канал для чтения элементов</param>
+    /// <param name="cancellationToken">Токен отмены</param>
     private async Task ConsumeAsync(
         ChannelReader<SourceRecord<TInput>> reader,
         CancellationToken cancellationToken)
@@ -136,6 +157,7 @@ internal sealed class PipelineRunner<TInput, TOutput>(
         }
     }
 
+    /// <inheritdoc />
     public async Task PauseAsync(CancellationToken cancellationToken)
     {
         if (!_isPaused)
@@ -156,6 +178,7 @@ internal sealed class PipelineRunner<TInput, TOutput>(
         }
     }
 
+    /// <inheritdoc />
     public Task ResumeAsync()
     {
         if (_isPaused)
@@ -167,6 +190,7 @@ internal sealed class PipelineRunner<TInput, TOutput>(
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc />
     public async Task StopAsync()
     {
         if (_pipelineCancellation is null)
@@ -181,15 +205,19 @@ internal sealed class PipelineRunner<TInput, TOutput>(
         }
         catch (OperationCanceledException)
         {
-            // Отмена является ожидаемым способом остановки.
+            // Отмена является ожидаемым способом остановки
         }
     }
 
+    /// <inheritdoc />
     public Task<SourcePosition> CaptureStateAsync()
     {
         return Task.FromResult(currentPosition);
     }
 
+    /// <summary>
+    /// Регистрирует элемент, ожидающий завершения обработки
+    /// </summary>
     private void RegisterPendingRecord()
     {
         lock (_drainLock)
@@ -201,6 +229,9 @@ internal sealed class PipelineRunner<TInput, TOutput>(
         }
     }
 
+    /// <summary>
+    /// Отмечает завершение обработки ожидающего элемента
+    /// </summary>
     private void CompletePendingRecord()
     {
         lock (_drainLock)
@@ -212,12 +243,20 @@ internal sealed class PipelineRunner<TInput, TOutput>(
         }
     }
 
+    /// <summary>
+    /// Возвращает задачу ожидания завершения всех элементов
+    /// </summary>
+    /// <returns>Задача ожидания опустошения конвейера</returns>
     private Task WaitUntilDrainedAsync()
     {
         lock (_drainLock)
             return _drained.Task;
     }
 
+    /// <summary>
+    /// Создает завершенный источник ожидания
+    /// </summary>
+    /// <returns>Завершенный источник ожидания</returns>
     private static TaskCompletionSource<bool> CreateCompletedDrainSource()
     {
         var source = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);

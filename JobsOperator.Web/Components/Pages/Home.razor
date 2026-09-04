@@ -76,8 +76,15 @@
     private bool _hasError;
     private string? _message;
 
+    /// <summary>
+    /// Загружает список запущенных заданий при инициализации страницы
+    /// </summary>
     protected override void OnInitialized() => RefreshJobs();
 
+    /// <summary>
+    /// Сохраняет выбранные пользователем файлы
+    /// </summary>
+    /// <param name="args">Данные события выбора файлов</param>
     private void OnFilesSelected(InputFileChangeEventArgs args)
     {
         try
@@ -94,6 +101,9 @@
         }
     }
 
+    /// <summary>
+    /// Запускает задания из выбранных сборок
+    /// </summary>
     private async Task StartAsync()
     {
         _isStarting = true;
@@ -121,6 +131,10 @@
         }
     }
 
+    /// <summary>
+    /// Останавливает выбранное задание
+    /// </summary>
+    /// <param name="jobId">Идентификатор задания</param>
     private async Task StopAsync(Guid jobId)
     {
         _stoppingJobs.Add(jobId);
@@ -139,8 +153,16 @@
         }
     }
 
+    /// <summary>
+    /// Обновляет список запущенных заданий
+    /// </summary>
     private void RefreshJobs() => _runningJobs = JobExecutionService.GetRunningJobs();
 
+    /// <summary>
+    /// Формирует сообщение о результатах запуска
+    /// </summary>
+    /// <param name="result">Результат запуска заданий</param>
+    /// <returns>Сообщение для пользователя</returns>
     private static string BuildMessage(StartJobsResult result)
     {
         var started = result.StartedJobs.Count switch
@@ -155,6 +177,11 @@
             : $"{started} {string.Join(" ", result.Errors)}";
     }
 
+    /// <summary>
+    /// Форматирует размер файла в удобных единицах
+    /// </summary>
+    /// <param name="bytes">Размер файла в байтах</param>
+    /// <returns>Отформатированный размер файла</returns>
     private static string FormatSize(long bytes)
     {
         if (bytes < 1024)

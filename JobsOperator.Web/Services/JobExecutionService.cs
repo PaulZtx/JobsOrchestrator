@@ -7,6 +7,12 @@ using Microsoft.AspNetCore.Components.Forms;
 
 namespace JobsOperator.Web.Services;
 
+/// <summary>
+/// Загружает сборки и управляет запущенными заданиями
+/// </summary>
+/// <param name="orchestrator">Оркестратор заданий</param>
+/// <param name="environment">Окружение веб-приложения</param>
+/// <param name="logger">Журнал сервиса</param>
 public sealed class JobExecutionService(
     JobsOrchestrator orchestrator,
     IWebHostEnvironment environment,
@@ -16,10 +22,20 @@ public sealed class JobExecutionService(
     private const long MaxPackageSize = 100 * 1024 * 1024;
     private readonly ConcurrentDictionary<Guid, RunningJobInfo> _runningJobs = [];
 
+    /// <summary>
+    /// Возвращает запущенные задания в порядке времени запуска
+    /// </summary>
+    /// <returns>Сведения о запущенных заданиях</returns>
     public IReadOnlyList<RunningJobInfo> GetRunningJobs() => _runningJobs.Values
         .OrderByDescending(job => job.StartedAt)
         .ToArray();
 
+    /// <summary>
+    /// Сохраняет выбранные сборки и запускает найденные задания
+    /// </summary>
+    /// <param name="files">Выбранные файлы сборок</param>
+    /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Сведения о запущенных заданиях и ошибках</returns>
     public async Task<StartJobsResult> StartAsync(
         IReadOnlyCollection<IBrowserFile> files,
         CancellationToken cancellationToken = default)
@@ -50,6 +66,11 @@ public sealed class JobExecutionService(
         return LoadAndStart(assemblyPaths, uploadDirectory);
     }
 
+    /// <summary>
+    /// Останавливает задание и удаляет его из списка запущенных
+    /// </summary>
+    /// <param name="jobId">Идентификатор задания</param>
+    /// <returns>Признак успешной остановки</returns>
     public async Task<bool> StopAsync(Guid jobId)
     {
         var stopped = await orchestrator.TryRemoveJob(jobId);
@@ -59,6 +80,12 @@ public sealed class JobExecutionService(
         return stopped;
     }
 
+    /// <summary>
+    /// Загружает сборки и запускает найденные реализации заданий
+    /// </summary>
+    /// <param name="assemblyPaths">Пути к загруженным сборкам</param>
+    /// <param name="uploadDirectory">Каталог загруженных файлов</param>
+    /// <returns>Сведения о запущенных заданиях и ошибках</returns>
     private StartJobsResult LoadAndStart(IReadOnlyList<string> assemblyPaths, string uploadDirectory)
     {
         var errors = new List<string>();
@@ -140,6 +167,11 @@ public sealed class JobExecutionService(
         return new StartJobsResult(startedJobs, errors);
     }
 
+    /// <summary>
+    /// Проверяет выбранные файлы перед сохранением
+    /// </summary>
+    /// <param name="files">Выбранные файлы</param>
+    /// <returns>Сообщение об ошибке или null при успешной проверке</returns>
     private static string? Validate(IReadOnlyCollection<IBrowserFile> files)
     {
         if (files.Count == 0)
@@ -163,6 +195,13 @@ public sealed class JobExecutionService(
             : $"Файл с именем {duplicateName} выбран несколько раз.";
     }
 
+    /// <summary>
+    /// Сохраняет выбранные файлы в каталог загрузки
+    /// </summary>
+    /// <param name="files">Выбранные файлы</param>
+    /// <param name="uploadDirectory">Каталог загрузки</param>
+    /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Пути к сохраненным файлам</returns>
     private static async Task<IReadOnlyList<string>> SaveFilesAsync(
         IEnumerable<IBrowserFile> files,
         string uploadDirectory,
@@ -191,6 +230,12 @@ public sealed class JobExecutionService(
         return paths;
     }
 
+    /// <summary>
+    /// Возвращает доступные типы сборки и сохраняет ошибки загрузки
+    /// </summary>
+    /// <param name="assembly">Проверяемая сборка</param>
+    /// <param name="errors">Коллекция сообщений об ошибках</param>
+    /// <returns>Доступные типы сборки</returns>
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly, ICollection<string> errors)
     {
         try
@@ -210,8 +255,13 @@ public sealed class JobExecutionService(
         }
     }
 
+    /// <summary>
+    /// Загружает сборку задания и ее зависимости из одного каталога
+    /// </summary>
+    /// <param name="directory">Каталог сборки и зависимостей</param>
     private sealed class JobAssemblyLoadContext(string directory) : AssemblyLoadContext
     {
+        /// <inheritdoc />
         protected override Assembly? Load(AssemblyName assemblyName)
         {
             if (string.Equals(
@@ -230,15 +280,32 @@ public sealed class JobExecutionService(
     }
 }
 
+/// <summary>
+/// Сведения о запущенном задании
+/// </summary>
+/// <param name="JobId">Идентификатор задания</param>
+/// <param name="JobType">Полное имя типа задания</param>
+/// <param name="AssemblyName">Имя сборки</param>
+/// <param name="StartedAt">Время запуска</param>
 public sealed record RunningJobInfo(
     Guid JobId,
     string JobType,
     string AssemblyName,
     DateTimeOffset StartedAt);
 
+/// <summary>
+/// Результат запуска заданий из загруженных сборок
+/// </summary>
+/// <param name="StartedJobs">Успешно запущенные задания</param>
+/// <param name="Errors">Ошибки загрузки и запуска</param>
 public sealed record StartJobsResult(
     IReadOnlyList<RunningJobInfo> StartedJobs,
     IReadOnlyList<string> Errors)
 {
+    /// <summary>
+    /// Создает результат с одной ошибкой без запущенных заданий
+    /// </summary>
+    /// <param name="error">Сообщение об ошибке</param>
+    /// <returns>Неуспешный результат запуска</returns>
     public static StartJobsResult Failed(string error) => new([], [error]);
 }

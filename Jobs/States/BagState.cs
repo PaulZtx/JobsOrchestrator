@@ -9,6 +9,7 @@ namespace Jobs.States;
 /// Потокобезопасное состояние в виде неупорядоченной коллекции
 /// </summary>
 /// <typeparam name="T">Тип элементов состояния</typeparam>
+/// <param name="name">Уникальное имя состояния</param>
 internal sealed class BagState<T>(string name) : IState<T>, ICheckpointState
 {
     private const int CurrentSnapshotVersion = 1;

@@ -65,8 +65,8 @@ public class JobsOrchestrator
 
             _jobs[jobEntry.JobId] = jobEntry;
             
-            // Log
-            
+            // Точка расширения для журналирования успешного запуска
+
             status.JobId = jobId;
             status.CheckpointPath = resolvedStartOptions?.CheckpointPath;
             Console.WriteLine($"Job {jobId} added");
@@ -74,7 +74,7 @@ public class JobsOrchestrator
         }
         catch (Exception e)
         {
-            // Log
+            // Точка расширения для журналирования ошибки запуска
             status.JobId = null;
             status.ErrorMessage = e.Message;
             return status;
@@ -97,12 +97,12 @@ public class JobsOrchestrator
             await job.CancellationTokenSource.CancelAsync();
             await job.JobTask;
             
-            // Log
+            // Точка расширения для журналирования успешной остановки
             return true;
         }
         catch (Exception)
         {
-            // Log
+            // Точка расширения для журналирования ошибки остановки
             return false;
         }
     }
@@ -166,8 +166,14 @@ public class JobsOrchestrator
         };
     }
 
+    /// <summary>
+    /// Пустой провайдер для заданий без внедряемых зависимостей
+    /// </summary>
     private sealed class EmptyServiceProvider : IServiceProvider
     {
+        /// <summary>
+        /// Единственный экземпляр пустого провайдера
+        /// </summary>
         public static EmptyServiceProvider Instance { get; } = new();
 
         /// <inheritdoc />

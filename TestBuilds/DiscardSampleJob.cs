@@ -4,12 +4,17 @@ using Jobs.JobsEntities.Interfaces;
 namespace TestBuilds;
 
 /// <summary>
-/// Пример конвейера, в котором результат Process не требуется внешнему sink.
+/// Пример конвейера без внешнего принимающего узла
 /// </summary>
 internal sealed class DiscardSampleJob : IJob
 {
+    /// <summary>
+    /// Тестовое значение
+    /// </summary>
+    /// <param name="Name">Имя значения</param>
     private sealed record Test(string Name);
 
+    /// <inheritdoc />
     public void Configure(IJobBuilder builder)
     {
         builder.Source(

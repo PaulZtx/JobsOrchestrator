@@ -5,8 +5,16 @@ using Jobs.Pipelines.Interfaces;
 namespace Jobs.Pipelines;
 
 /// <summary>
-/// Неизменяемое описание связанного конвейера source-process-sink.
+/// Неизменяемое описание связанного конвейера
 /// </summary>
+/// <typeparam name="TInput">Тип элементов источника</typeparam>
+/// <typeparam name="TOutput">Тип результатов обработчика</typeparam>
+/// <param name="sourceName">Имя источника</param>
+/// <param name="sourceFactory">Фабрика исходящего коннектора</param>
+/// <param name="processName">Имя обработчика</param>
+/// <param name="processor">Функция обработки элемента</param>
+/// <param name="sinkName">Имя принимающего узла</param>
+/// <param name="sinkFactory">Фабрика принимающего коннектора</param>
 internal sealed class PipelineDefinition<TInput, TOutput>(
     string sourceName,
     Func<IServiceProvider, IConnectorSource<TInput>> sourceFactory,
@@ -15,8 +23,10 @@ internal sealed class PipelineDefinition<TInput, TOutput>(
     string sinkName,
     Func<IServiceProvider, IConnectorSink<TOutput>> sinkFactory) : IPipelineDefinition
 {
+    /// <inheritdoc />
     public string SourceName => sourceName;
 
+    /// <inheritdoc />
     public IPipelineRunner CreateRunner(
         IServiceProvider serviceProvider,
         SourcePosition sourcePosition)

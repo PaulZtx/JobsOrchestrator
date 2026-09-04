@@ -1,4 +1,4 @@
-﻿// See https://aka.ms/new-console-template for more information
+// Пример динамической загрузки и запуска задания
 
 using System.Reflection;
 using Jobs;
@@ -11,7 +11,7 @@ var path = "C:\\Users\\stsma\\RiderProjects\\JobsOperator\\TestBuilds\\bin\\Debu
 Assembly MyAssembly = Assembly.LoadFrom(path);
 
 var type = MyAssembly.ExportedTypes.FirstOrDefault(_ => _.FullName.EndsWith("job", StringComparison.InvariantCultureIgnoreCase));
-// 2. Create the instance using the full name (Namespace.ClassName)
+// Создание задания по полному имени типа
 IJob job = (IJob)MyAssembly.CreateInstance(type.FullName);
 
 var orchestrator = new JobsOrchestrator();

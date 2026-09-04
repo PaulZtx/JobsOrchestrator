@@ -5,6 +5,10 @@ using Jobs.Connectors.Interfaces;
 
 namespace Jobs.Connectors;
 
+/// <summary>
+/// Читает JSON-значения из построчного файла
+/// </summary>
+/// <typeparam name="T">Тип читаемых значений</typeparam>
 public class JsonFileConnectorSource<T> : IConnectorSource<T>
 {
     private readonly string _fileName;
@@ -12,13 +16,20 @@ public class JsonFileConnectorSource<T> : IConnectorSource<T>
     private StreamReader _streamReader = null!;
     
     
+    /// <summary>
+    /// Создает источник для заданного файла
+    /// </summary>
+    /// <param name="fileName">Путь к файлу</param>
     public JsonFileConnectorSource(string fileName)
     {
         _fileName = fileName;
         _buffer = new byte[1024];
     }
     
-    public async IAsyncEnumerable<SourceRecord<T>> ReadNextAsync(SourcePosition position, [EnumeratorCancellation] CancellationToken cancellationToken)
+    /// <inheritdoc />
+    public async IAsyncEnumerable<SourceRecord<T>> ReadNextAsync(
+        SourcePosition position,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         int lineNumber = 0;
 
@@ -44,16 +55,18 @@ public class JsonFileConnectorSource<T> : IConnectorSource<T>
 
             lineNumber++;
 
-            // Позиция означает: следующая строка, которую нужно прочитать.
+            // Позиция указывает следующую строку для чтения
             yield return new SourceRecord<T>(value, new SourcePosition(lineNumber));
         }
     }
 
+    /// <inheritdoc />
     public Task CommitAsync(SourcePosition position, CancellationToken cancellationToken)
     {
         throw new NotImplementedException();
     }
 
+    /// <inheritdoc />
     public bool TryConnect()
     {
         var fileStream = File.Open(_fileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);

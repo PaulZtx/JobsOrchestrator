@@ -4,24 +4,36 @@ using Jobs.Sinks;
 namespace Jobs.Pipelines;
 
 /// <summary>
-/// Стадия описания конвейера, на которой задан обработчик и ожидается выход.
+/// Стадия описания конвейера с настроенным обработчиком
 /// </summary>
 /// <typeparam name="TOutput">Тип результата обработчика</typeparam>
 public interface IProcessedStage<TOutput>
 {
     /// <summary>
-    /// Подключает выход обработчика к принимающему коннектору.
+    /// Подключает выход обработчика к принимающему коннектору
     /// </summary>
+    /// <param name="name">Уникальное имя принимающего узла</param>
+    /// <param name="factory">Фабрика принимающего коннектора</param>
     void ConnectToSink(
         string name,
         Func<IServiceProvider, IConnectorSink<TOutput>> factory);
 
     /// <summary>
-    /// Завершает конвейер принимающим узлом, который отбрасывает результат.
+    /// Завершает конвейер принимающим узлом без сохранения результата
     /// </summary>
     void Discard();
 }
 
+/// <summary>
+/// Реализует стадию настройки принимающего узла
+/// </summary>
+/// <typeparam name="TInput">Тип элементов источника</typeparam>
+/// <typeparam name="TOutput">Тип результатов обработчика</typeparam>
+/// <param name="builder">Построитель задания</param>
+/// <param name="sourceName">Имя источника</param>
+/// <param name="sourceFactory">Фабрика исходящего коннектора</param>
+/// <param name="processName">Имя обработчика</param>
+/// <param name="processor">Функция обработки элемента</param>
 internal sealed class ProcessedStage<TInput, TOutput>(
     JobsEntities.BasicJobBuilder builder,
     string sourceName,
@@ -31,6 +43,7 @@ internal sealed class ProcessedStage<TInput, TOutput>(
 {
     private bool _isCompleted;
 
+    /// <inheritdoc />
     public void ConnectToSink(
         string name,
         Func<IServiceProvider, IConnectorSink<TOutput>> factory)
@@ -46,6 +59,7 @@ internal sealed class ProcessedStage<TInput, TOutput>(
         _isCompleted = true;
     }
 
+    /// <inheritdoc />
     public void Discard()
     {
         EnsureNotCompleted();
@@ -59,6 +73,9 @@ internal sealed class ProcessedStage<TInput, TOutput>(
         _isCompleted = true;
     }
 
+    /// <summary>
+    /// Проверяет, что настройка конвейера еще не завершена
+    /// </summary>
     private void EnsureNotCompleted()
     {
         if (_isCompleted)

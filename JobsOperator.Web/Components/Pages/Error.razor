@@ -25,12 +25,25 @@
 </p>
 
 @code{
+    /// <summary>
+    /// Контекст текущего HTTP-запроса
+    /// </summary>
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
 
+    /// <summary>
+    /// Идентификатор текущего запроса
+    /// </summary>
     private string? RequestId { get; set; }
+
+    /// <summary>
+    /// Признак наличия идентификатора запроса
+    /// </summary>
     private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
 
+    /// <summary>
+    /// Определяет идентификатор запроса при инициализации страницы
+    /// </summary>
     protected override void OnInitialized() =>
         RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
 }

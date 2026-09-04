@@ -8,7 +8,7 @@ using Jobs.States.Interfaces;
 namespace Jobs.JobsEntities;
 
 /// <summary>
-/// Базовая реализация билдера для построения графа выполнения Jobs.
+/// Базовая реализация построителя графа выполнения задания
 /// </summary>
 public class BasicJobBuilder : IJobBuilder
 {
@@ -37,8 +37,15 @@ public class BasicJobBuilder : IJobBuilder
     }
 
     /// <summary>
-    /// Создает стадию обработанного потока.
+    /// Создает стадию обработанного потока
     /// </summary>
+    /// <typeparam name="TInput">Тип элементов источника</typeparam>
+    /// <typeparam name="TOutput">Тип результатов обработчика</typeparam>
+    /// <param name="sourceName">Имя источника</param>
+    /// <param name="sourceFactory">Фабрика исходящего коннектора</param>
+    /// <param name="processName">Имя обработчика</param>
+    /// <param name="processor">Функция обработки элемента</param>
+    /// <returns>Стадия настройки принимающего узла</returns>
     internal IProcessedStage<TOutput> Process<TInput, TOutput>(
         string sourceName,
         Func<IServiceProvider, IConnectorSource<TInput>> sourceFactory,
@@ -58,8 +65,16 @@ public class BasicJobBuilder : IJobBuilder
     }
 
     /// <summary>
-    /// Завершает описание конвейера и добавляет его в определение задания.
+    /// Завершает описание конвейера и добавляет его в определение задания
     /// </summary>
+    /// <typeparam name="TInput">Тип элементов источника</typeparam>
+    /// <typeparam name="TOutput">Тип результатов обработчика</typeparam>
+    /// <param name="sourceName">Имя источника</param>
+    /// <param name="sourceFactory">Фабрика исходящего коннектора</param>
+    /// <param name="processName">Имя обработчика</param>
+    /// <param name="processor">Функция обработки элемента</param>
+    /// <param name="sinkName">Имя принимающего узла</param>
+    /// <param name="sinkFactory">Фабрика принимающего коннектора</param>
     internal void CompletePipeline<TInput, TOutput>(
         string sourceName,
         Func<IServiceProvider, IConnectorSource<TInput>> sourceFactory,
@@ -116,8 +131,9 @@ public class BasicJobBuilder : IJobBuilder
     }
 
     /// <summary>
-    /// Создает Job и все его зависимости.
+    /// Создает задание и все его зависимости
     /// </summary>
+    /// <returns>Готовое определение задания</returns>
     internal JobDefinition Build()
     {
         EnsureNotBuilt();
@@ -132,6 +148,9 @@ public class BasicJobBuilder : IJobBuilder
         return new JobDefinition(_pipelines.ToArray(), _checkpointOptions, _stateRegistry);
     }
 
+    /// <summary>
+    /// Проверяет, что построение задания еще не завершено
+    /// </summary>
     private void EnsureNotBuilt()
     {
         if (_isBuilt)
