@@ -6,10 +6,7 @@ namespace Jobs.Pipelines;
 /// <param name="SourceName">Имя источника</param>
 /// <param name="ProcessName">Имя обработчика</param>
 /// <param name="SinkName">Имя принимающего узла</param>
-public sealed record ProcessContext(
-    string SourceName,
-    string ProcessName,
-    string SinkName);
+public sealed record ProcessContext(string SourceName, string ProcessName, string SinkName);
 
 /// <summary>
 /// Технический тип результата обработчика без выходного значения

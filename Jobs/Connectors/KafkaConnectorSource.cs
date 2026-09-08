@@ -38,6 +38,10 @@ public class KafkaConnectorSource<T>(
 
             while (!cancellationToken.IsCancellationRequested)
             {
+                // Consumer API синхронный. Асинхронный переход нужен до блокирующего
+                // ожидания, чтобы запуск конвейера и координатора checkpoint не зависел
+                // от появления первого или следующего сообщения.
+                await Task.Yield();
                 var consumeResult = consumer.Consume(cancellationToken);
 
                 if (consumeResult.IsPartitionEOF)

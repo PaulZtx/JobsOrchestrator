@@ -1,4 +1,5 @@
 using Jobs.Connectors;
+using Jobs.Diagnostics;
 
 namespace Jobs.Pipelines.Interfaces;
 
@@ -39,4 +40,9 @@ internal interface IPipelineRunner
     /// </summary>
     /// <returns>Позиция следующего элемента</returns>
     Task<SourcePosition> CaptureStateAsync();
+
+    /// <summary>
+    /// Возвращает текущие счетчики обработки конвейера.
+    /// </summary>
+    PipelineExecutionSnapshot CaptureDiagnostics();
 }

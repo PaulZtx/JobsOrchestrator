@@ -1,4 +1,4 @@
-using Jobs.Connectors.Interfaces;
+﻿using Jobs.Connectors.Interfaces;
 using Jobs.Pipelines;
 using Jobs.States.Interfaces;
 
@@ -27,9 +27,9 @@ public interface IJobBuilder
     IState<T> RegisterState<T>(string name);
 
     /// <summary>
-    /// Включает периодическое создание контрольных точек
+    /// Настраивает создание и восстановление контрольных точек
     /// </summary>
-    /// <param name="delay">Интервал между контрольными точками</param>
+    /// <param name="options">Параметры контрольных точек</param>
     /// <returns>Текущий построитель задания</returns>
-    IJobBuilder EnableCheckpoints(TimeSpan delay);
+    IJobBuilder ConfigureCheckpoints(CheckpointOptions options);
 }

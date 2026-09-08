@@ -18,7 +18,5 @@ internal interface IPipelineDefinition
     /// <param name="serviceProvider">Провайдер сервисов</param>
     /// <param name="sourcePosition">Начальная позиция источника</param>
     /// <returns>Среда выполнения конвейера</returns>
-    IPipelineRunner CreateRunner(
-        IServiceProvider serviceProvider,
-        SourcePosition sourcePosition);
+    IPipelineRunner CreateRunner(IServiceProvider serviceProvider, SourcePosition sourcePosition);
 }

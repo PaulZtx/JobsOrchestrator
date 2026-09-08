@@ -2,17 +2,15 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.Loader;
 using Jobs;
+using Jobs.Diagnostics;
 using Jobs.JobsEntities.Interfaces;
 using Microsoft.AspNetCore.Components.Forms;
 
 namespace JobsOperator.Web.Services;
 
 /// <summary>
-/// Загружает сборки и управляет запущенными заданиями
+/// Загружает сборки, управляет заданиями и предоставляет снимки для панели мониторинга.
 /// </summary>
-/// <param name="orchestrator">Оркестратор заданий</param>
-/// <param name="environment">Окружение веб-приложения</param>
-/// <param name="logger">Журнал сервиса</param>
 public sealed class JobExecutionService(
     JobsOrchestrator orchestrator,
     IWebHostEnvironment environment,
@@ -20,22 +18,24 @@ public sealed class JobExecutionService(
 {
     private const int MaxFileCount = 20;
     private const long MaxPackageSize = 100 * 1024 * 1024;
-    private readonly ConcurrentDictionary<Guid, RunningJobInfo> _runningJobs = [];
+    private readonly ConcurrentDictionary<Guid, ManagedJob> _jobs = [];
 
     /// <summary>
-    /// Возвращает запущенные задания в порядке времени запуска
+    /// Возвращает загруженные задания вместе с актуальными показателями выполнения.
     /// </summary>
-    /// <returns>Сведения о запущенных заданиях</returns>
-    public IReadOnlyList<RunningJobInfo> GetRunningJobs() => _runningJobs.Values
+    public IReadOnlyList<RunningJobInfo> GetJobs() => _jobs.Values
+        .Select(CreateInfo)
         .OrderByDescending(job => job.StartedAt)
         .ToArray();
 
     /// <summary>
-    /// Сохраняет выбранные сборки и запускает найденные задания
+    /// Возвращает задания. Оставлено для совместимости с прежним интерфейсом.
     /// </summary>
-    /// <param name="files">Выбранные файлы сборок</param>
-    /// <param name="cancellationToken">Токен отмены</param>
-    /// <returns>Сведения о запущенных заданиях и ошибках</returns>
+    public IReadOnlyList<RunningJobInfo> GetRunningJobs() => GetJobs();
+
+    /// <summary>
+    /// Сохраняет выбранные сборки и запускает найденные задания.
+    /// </summary>
     public async Task<StartJobsResult> StartAsync(
         IReadOnlyCollection<IBrowserFile> files,
         CancellationToken cancellationToken = default)
@@ -67,25 +67,159 @@ public sealed class JobExecutionService(
     }
 
     /// <summary>
-    /// Останавливает задание и удаляет его из списка запущенных
+    /// Останавливает отдельное задание, сохраняя его карточку и последний снимок.
     /// </summary>
-    /// <param name="jobId">Идентификатор задания</param>
-    /// <returns>Признак успешной остановки</returns>
     public async Task<bool> StopAsync(Guid jobId)
     {
-        var stopped = await orchestrator.TryRemoveJob(jobId);
-        if (stopped)
-            _runningJobs.TryRemove(jobId, out _);
+        if (!_jobs.TryGetValue(jobId, out var job))
+            return false;
 
-        return stopped;
+        await job.OperationLock.WaitAsync();
+
+        try
+        {
+            Guid runtimeJobId;
+
+            lock (job.SyncRoot)
+            {
+                if (job.RuntimeJobId is not { } currentRuntimeJobId ||
+                    job.State is ManagedJobState.Starting or ManagedJobState.Cancelling or ManagedJobState.Stopped)
+                {
+                    return false;
+                }
+
+                runtimeJobId = currentRuntimeJobId;
+                job.LastSnapshot = orchestrator.GetJobSnapshot(runtimeJobId) ?? job.LastSnapshot;
+                job.State = ManagedJobState.Cancelling;
+                job.ErrorMessage = null;
+            }
+
+            var stopped = await orchestrator.TryRemoveJob(runtimeJobId);
+
+            lock (job.SyncRoot)
+            {
+                job.RuntimeJobId = null;
+                job.State = stopped ? ManagedJobState.Stopped : ManagedJobState.Failed;
+                job.ErrorMessage = stopped ? null : "Не удалось корректно остановить задание.";
+            }
+
+            return stopped;
+        }
+        finally
+        {
+            job.OperationLock.Release();
+        }
     }
 
     /// <summary>
-    /// Загружает сборки и запускает найденные реализации заданий
+    /// Отменяет выполняющееся задание, если это необходимо, и удаляет его карточку.
     /// </summary>
-    /// <param name="assemblyPaths">Пути к загруженным сборкам</param>
-    /// <param name="uploadDirectory">Каталог загруженных файлов</param>
-    /// <returns>Сведения о запущенных заданиях и ошибках</returns>
+    public async Task<bool> CancelAsync(Guid jobId)
+    {
+        if (!_jobs.TryGetValue(jobId, out var job))
+            return false;
+
+        await job.OperationLock.WaitAsync();
+
+        try
+        {
+            Guid? runtimeJobId;
+
+            lock (job.SyncRoot)
+            {
+                runtimeJobId = job.RuntimeJobId;
+                job.State = ManagedJobState.Cancelling;
+            }
+
+            if (runtimeJobId is not null)
+                await orchestrator.TryRemoveJob(runtimeJobId.Value);
+
+            lock (job.SyncRoot)
+            {
+                job.RuntimeJobId = null;
+                job.State = ManagedJobState.Stopped;
+            }
+
+            return _jobs.TryRemove(jobId, out _);
+        }
+        finally
+        {
+            job.OperationLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Запускает новую попытку выполнения ранее загруженного задания.
+    /// </summary>
+    public async Task<bool> StartJobAsync(Guid jobId)
+    {
+        if (!_jobs.TryGetValue(jobId, out var job))
+            return false;
+
+        await job.OperationLock.WaitAsync();
+
+        try
+        {
+            Guid? previousRuntimeJobId;
+
+            lock (job.SyncRoot)
+            {
+                if (job.State is ManagedJobState.Running or ManagedJobState.Starting or ManagedJobState.Cancelling)
+                    return false;
+
+                previousRuntimeJobId = job.RuntimeJobId;
+                job.State = ManagedJobState.Starting;
+                job.ErrorMessage = null;
+            }
+
+            if (previousRuntimeJobId is not null)
+                await orchestrator.TryRemoveJob(previousRuntimeJobId.Value);
+
+            try
+            {
+                var instance = (IJob)Activator.CreateInstance(job.JobType)!;
+                var result = orchestrator.TryAddJob(instance);
+
+                lock (job.SyncRoot)
+                {
+                    if (result.JobId is not { } runtimeJobId)
+                    {
+                        job.RuntimeJobId = null;
+                        job.State = ManagedJobState.Failed;
+                        job.ErrorMessage = result.ErrorMessage ?? "Ошибка запуска задания.";
+                        return false;
+                    }
+
+                    job.RuntimeJobId = runtimeJobId;
+                    job.StartedAt = DateTimeOffset.Now;
+                    job.State = ManagedJobState.Running;
+                    job.LastSnapshot = null;
+                    return true;
+                }
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Failed to restart job type {JobType}", job.JobType.FullName);
+
+                lock (job.SyncRoot)
+                {
+                    job.RuntimeJobId = null;
+                    job.State = ManagedJobState.Failed;
+                    job.ErrorMessage = exception.GetBaseException().Message;
+                }
+
+                return false;
+            }
+        }
+        finally
+        {
+            job.OperationLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Загружает сборки и запускает найденные реализации заданий.
+    /// </summary>
     private StartJobsResult LoadAndStart(IReadOnlyList<string> assemblyPaths, string uploadDirectory)
     {
         var errors = new List<string>();
@@ -139,23 +273,23 @@ public sealed class JobExecutionService(
 
             try
             {
-                var job = (IJob)Activator.CreateInstance(jobType)!;
-                var status = orchestrator.TryAddJob(job);
+                var instance = (IJob)Activator.CreateInstance(jobType)!;
+                var status = orchestrator.TryAddJob(instance);
 
-                if (status.JobId is not { } jobId)
+                if (status.JobId is not { } runtimeJobId)
                 {
                     errors.Add($"{jobType.FullName}: {status.ErrorMessage ?? "ошибка запуска"}.");
                     continue;
                 }
 
-                var info = new RunningJobInfo(
-                    jobId,
-                    jobType.FullName ?? jobType.Name,
+                var managedJob = new ManagedJob(
+                    runtimeJobId,
+                    jobType,
                     jobType.Assembly.GetName().Name ?? Path.GetFileNameWithoutExtension(jobType.Assembly.Location),
                     DateTimeOffset.Now);
 
-                _runningJobs[jobId] = info;
-                startedJobs.Add(info);
+                _jobs[managedJob.Id] = managedJob;
+                startedJobs.Add(CreateInfo(managedJob));
             }
             catch (Exception exception)
             {
@@ -168,10 +302,60 @@ public sealed class JobExecutionService(
     }
 
     /// <summary>
-    /// Проверяет выбранные файлы перед сохранением
+    /// Создает неизменяемую модель карточки и актуализирует ее по данным оркестратора.
     /// </summary>
-    /// <param name="files">Выбранные файлы</param>
-    /// <returns>Сообщение об ошибке или null при успешной проверке</returns>
+    private RunningJobInfo CreateInfo(ManagedJob job)
+    {
+        Guid? runtimeJobId;
+
+        lock (job.SyncRoot)
+            runtimeJobId = job.RuntimeJobId;
+
+        var currentSnapshot = runtimeJobId is null
+            ? null
+            : orchestrator.GetJobSnapshot(runtimeJobId.Value);
+
+        lock (job.SyncRoot)
+        {
+            if (currentSnapshot is not null)
+            {
+                job.LastSnapshot = currentSnapshot;
+
+                if (job.State is not (ManagedJobState.Starting or ManagedJobState.Cancelling))
+                    job.State = MapState(currentSnapshot.State);
+
+                job.ErrorMessage = currentSnapshot.ErrorMessage;
+            }
+
+            var snapshot = job.LastSnapshot;
+
+            return new RunningJobInfo(
+                job.Id,
+                job.JobType.FullName ?? job.JobType.Name,
+                job.AssemblyName,
+                job.StartedAt)
+            {
+                RuntimeJobId = job.RuntimeJobId,
+                Status = job.State,
+                ProcessedCount = snapshot?.ProcessedCount ?? 0,
+                LastProcessedAt = snapshot?.LastProcessedAt,
+                LastProcessedMessage = snapshot?.LastProcessedMessage,
+                States = snapshot?.States ?? [],
+                ErrorMessage = job.ErrorMessage
+            };
+        }
+    }
+
+    private static ManagedJobState MapState(JobExecutionState state) => state switch
+    {
+        JobExecutionState.Running => ManagedJobState.Running,
+        JobExecutionState.Cancelling => ManagedJobState.Cancelling,
+        JobExecutionState.Completed => ManagedJobState.Completed,
+        JobExecutionState.Cancelled => ManagedJobState.Stopped,
+        JobExecutionState.Failed => ManagedJobState.Failed,
+        _ => ManagedJobState.Failed
+    };
+
     private static string? Validate(IReadOnlyCollection<IBrowserFile> files)
     {
         if (files.Count == 0)
@@ -195,13 +379,6 @@ public sealed class JobExecutionService(
             : $"Файл с именем {duplicateName} выбран несколько раз.";
     }
 
-    /// <summary>
-    /// Сохраняет выбранные файлы в каталог загрузки
-    /// </summary>
-    /// <param name="files">Выбранные файлы</param>
-    /// <param name="uploadDirectory">Каталог загрузки</param>
-    /// <param name="cancellationToken">Токен отмены</param>
-    /// <returns>Пути к сохраненным файлам</returns>
     private static async Task<IReadOnlyList<string>> SaveFilesAsync(
         IEnumerable<IBrowserFile> files,
         string uploadDirectory,
@@ -230,12 +407,6 @@ public sealed class JobExecutionService(
         return paths;
     }
 
-    /// <summary>
-    /// Возвращает доступные типы сборки и сохраняет ошибки загрузки
-    /// </summary>
-    /// <param name="assembly">Проверяемая сборка</param>
-    /// <param name="errors">Коллекция сообщений об ошибках</param>
-    /// <returns>Доступные типы сборки</returns>
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly, ICollection<string> errors)
     {
         try
@@ -255,10 +426,6 @@ public sealed class JobExecutionService(
         }
     }
 
-    /// <summary>
-    /// Загружает сборку задания и ее зависимости из одного каталога
-    /// </summary>
-    /// <param name="directory">Каталог сборки и зависимостей</param>
     private sealed class JobAssemblyLoadContext(string directory) : AssemblyLoadContext
     {
         /// <inheritdoc />
@@ -278,34 +445,63 @@ public sealed class JobExecutionService(
                 : null;
         }
     }
+
+    private sealed class ManagedJob(
+        Guid id,
+        Type jobType,
+        string assemblyName,
+        DateTimeOffset startedAt)
+    {
+        internal Guid Id { get; } = id;
+        internal Type JobType { get; } = jobType;
+        internal string AssemblyName { get; } = assemblyName;
+        internal object SyncRoot { get; } = new();
+        internal SemaphoreSlim OperationLock { get; } = new(1, 1);
+        internal DateTimeOffset StartedAt { get; set; } = startedAt;
+        internal Guid? RuntimeJobId { get; set; } = id;
+        internal ManagedJobState State { get; set; } = ManagedJobState.Running;
+        internal JobExecutionSnapshot? LastSnapshot { get; set; }
+        internal string? ErrorMessage { get; set; }
+    }
 }
 
 /// <summary>
-/// Сведения о запущенном задании
+/// Состояние управляемого задания в веб-интерфейсе.
 /// </summary>
-/// <param name="JobId">Идентификатор задания</param>
-/// <param name="JobType">Полное имя типа задания</param>
-/// <param name="AssemblyName">Имя сборки</param>
-/// <param name="StartedAt">Время запуска</param>
+public enum ManagedJobState
+{
+    Starting,
+    Running,
+    Cancelling,
+    Stopped,
+    Completed,
+    Failed
+}
+
+/// <summary>
+/// Сведения о загруженном задании и его последней попытке выполнения.
+/// </summary>
 public sealed record RunningJobInfo(
     Guid JobId,
     string JobType,
     string AssemblyName,
-    DateTimeOffset StartedAt);
+    DateTimeOffset StartedAt)
+{
+    public Guid? RuntimeJobId { get; init; }
+    public ManagedJobState Status { get; init; }
+    public long ProcessedCount { get; init; }
+    public DateTimeOffset? LastProcessedAt { get; init; }
+    public string? LastProcessedMessage { get; init; }
+    public IReadOnlyList<JobStateSnapshot> States { get; init; } = [];
+    public string? ErrorMessage { get; init; }
+}
 
 /// <summary>
-/// Результат запуска заданий из загруженных сборок
+/// Результат запуска заданий из загруженных сборок.
 /// </summary>
-/// <param name="StartedJobs">Успешно запущенные задания</param>
-/// <param name="Errors">Ошибки загрузки и запуска</param>
 public sealed record StartJobsResult(
     IReadOnlyList<RunningJobInfo> StartedJobs,
     IReadOnlyList<string> Errors)
 {
-    /// <summary>
-    /// Создает результат с одной ошибкой без запущенных заданий
-    /// </summary>
-    /// <param name="error">Сообщение об ошибке</param>
-    /// <returns>Неуспешный результат запуска</returns>
     public static StartJobsResult Failed(string error) => new([], [error]);
 }

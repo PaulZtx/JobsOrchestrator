@@ -29,7 +29,7 @@ internal sealed class CheckpointCoordinator
     public CheckpointCoordinator(CheckpointCoordinatorOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var checkpointPath = options.JobStartOptions.CheckpointPath;
+        var checkpointPath = options.CheckpointOptions.PathToCheckpoint;
         ArgumentException.ThrowIfNullOrWhiteSpace(checkpointPath);
 
         if (!options.CheckpointOptions.Enabled)
@@ -52,7 +52,7 @@ internal sealed class CheckpointCoordinator
     public async Task<CheckpointDocument> RestoreAsync(CancellationToken cancellationToken)
     {
         var path = _checkpointPath;
-        var restoreMode = _options.JobStartOptions.RestoreMode;
+        var restoreMode = _options.CheckpointOptions.RestoreMode;
         var checkpointExists = File.Exists(path);
 
         if (restoreMode == CheckpointRestoreMode.CreateNew)

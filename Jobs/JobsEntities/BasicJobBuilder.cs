@@ -100,26 +100,6 @@ public class BasicJobBuilder : IJobBuilder
     }
 
     /// <inheritdoc />
-    public IJobBuilder EnableCheckpoints(TimeSpan delay)
-    {
-        EnsureNotBuilt();
-
-        if (delay < TimeSpan.FromMilliseconds(1))
-            throw new ArgumentOutOfRangeException(nameof(delay), "Checkpoint interval must be at least 1 millisecond.");
-
-        if (delay.TotalMilliseconds > int.MaxValue)
-            throw new ArgumentOutOfRangeException(nameof(delay), "Checkpoint interval is too large.");
-
-        _checkpointOptions = new CheckpointOptions
-        {
-            Enabled = true,
-            DelayMillisecond = checked((int)delay.TotalMilliseconds)
-        };
-
-        return this;
-    }
-
-    /// <inheritdoc />
     public IState<T> RegisterState<T>(string name)
     {
         EnsureNotBuilt();
@@ -128,6 +108,23 @@ public class BasicJobBuilder : IJobBuilder
         var state = new BagState<T>(name);
         _stateRegistry.Register(state);
         return state;
+    }
+
+    /// <inheritdoc />
+    public IJobBuilder ConfigureCheckpoints(CheckpointOptions options)
+    {
+        EnsureNotBuilt();
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (options.Enabled && options.DelayMillisecond < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                "Checkpoint interval must be at least 1 millisecond.");
+        }
+
+        _checkpointOptions = options;
+        return this;
     }
 
     /// <summary>

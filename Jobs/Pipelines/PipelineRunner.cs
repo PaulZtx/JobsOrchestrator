@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Jobs.Connectors;
 using Jobs.Connectors.Interfaces;
+using Jobs.Diagnostics;
 using Jobs.Pipelines.Interfaces;
 
 namespace Jobs.Pipelines;
@@ -30,6 +31,7 @@ internal sealed class PipelineRunner<TInput, TOutput>(
 
     private readonly SemaphoreSlim _pauseSemaphore = new(1, 1);
     private readonly Lock _drainLock = new();
+    private readonly Lock _diagnosticsLock = new();
     private readonly ProcessContext _processContext = new(sourceName, processName, sinkName);
 
     private bool _isPaused;
@@ -37,6 +39,9 @@ internal sealed class PipelineRunner<TInput, TOutput>(
     private TaskCompletionSource<bool> _drained = CreateCompletedDrainSource();
     private Task[] _workers = [];
     private CancellationTokenSource? _pipelineCancellation;
+    private long _processedCount;
+    private DateTimeOffset? _lastProcessedAt;
+    private string? _lastProcessedMessage;
 
     /// <inheritdoc />
     public string SourceName => sourceName;
@@ -44,28 +49,28 @@ internal sealed class PipelineRunner<TInput, TOutput>(
     /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken)
     {
-        if (!sink.TryConnect())
-            throw new InvalidOperationException($"Could not connect sink '{sinkName}'.");
-
-        if (!source.TryConnect())
-            throw new InvalidOperationException($"Could not connect source '{sourceName}'.");
-
         using var pipelineCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _pipelineCancellation = pipelineCancellation;
 
-        var channel = Channel.CreateBounded<SourceRecord<TInput>>(new BoundedChannelOptions(ChannelCapacity)
-        {
-            FullMode = BoundedChannelFullMode.Wait,
-            SingleReader = true,
-            SingleWriter = true
-        });
-
-        var consumer = ConsumeAsync(channel.Reader, pipelineCancellation.Token);
-        var producer = ProduceAsync(channel.Writer, pipelineCancellation.Token);
-        _workers = [consumer, producer];
-
         try
         {
+            if (!sink.TryConnect())
+                throw new InvalidOperationException($"Could not connect sink '{sinkName}'.");
+
+            if (!source.TryConnect())
+                throw new InvalidOperationException($"Could not connect source '{sourceName}'.");
+
+            var channel = Channel.CreateBounded<SourceRecord<TInput>>(new BoundedChannelOptions(ChannelCapacity)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleReader = true,
+                SingleWriter = true
+            });
+
+            var consumer = ConsumeAsync(channel.Reader, pipelineCancellation.Token);
+            var producer = ProduceAsync(channel.Writer, pipelineCancellation.Token);
+            _workers = [consumer, producer];
+
             var firstCompleted = await Task.WhenAny(_workers);
             if (firstCompleted.IsFaulted || firstCompleted.IsCanceled)
                 await pipelineCancellation.CancelAsync();
@@ -75,7 +80,23 @@ internal sealed class PipelineRunner<TInput, TOutput>(
         finally
         {
             await pipelineCancellation.CancelAsync();
+            await DisposeSinkAsync();
         }
+    }
+
+    /// <summary>
+    /// Освобождает ресурсы принимающего коннектора после остановки конвейера
+    /// </summary>
+    private async ValueTask DisposeSinkAsync()
+    {
+        if (sink is IAsyncDisposable asyncDisposable)
+        {
+            await asyncDisposable.DisposeAsync();
+            return;
+        }
+
+        if (sink is IDisposable disposable)
+            disposable.Dispose();
     }
 
     /// <summary>
@@ -149,6 +170,7 @@ internal sealed class PipelineRunner<TInput, TOutput>(
                 }
 
                 currentPosition = record.Position;
+                RecordProcessed(record.Value);
             }
             finally
             {
@@ -213,6 +235,33 @@ internal sealed class PipelineRunner<TInput, TOutput>(
     public Task<SourcePosition> CaptureStateAsync()
     {
         return Task.FromResult(currentPosition);
+    }
+
+    /// <inheritdoc />
+    public PipelineExecutionSnapshot CaptureDiagnostics()
+    {
+        lock (_diagnosticsLock)
+        {
+            return new PipelineExecutionSnapshot(
+                _processedCount,
+                _lastProcessedAt,
+                _lastProcessedMessage);
+        }
+    }
+
+    /// <summary>
+    /// Обновляет счетчики после успешной записи сообщения в принимающий узел.
+    /// </summary>
+    private void RecordProcessed(TInput message)
+    {
+        var formattedMessage = DiagnosticValueFormatter.Format(message);
+
+        lock (_diagnosticsLock)
+        {
+            _processedCount++;
+            _lastProcessedAt = DateTimeOffset.UtcNow;
+            _lastProcessedMessage = formattedMessage;
+        }
     }
 
     /// <summary>

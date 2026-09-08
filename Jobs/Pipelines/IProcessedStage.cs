@@ -14,9 +14,7 @@ public interface IProcessedStage<TOutput>
     /// </summary>
     /// <param name="name">Уникальное имя принимающего узла</param>
     /// <param name="factory">Фабрика принимающего коннектора</param>
-    void ConnectToSink(
-        string name,
-        Func<IServiceProvider, IConnectorSink<TOutput>> factory);
+    void ConnectToSink(string name, Func<IServiceProvider, IConnectorSink<TOutput>> factory);
 
     /// <summary>
     /// Завершает конвейер принимающим узлом без сохранения результата

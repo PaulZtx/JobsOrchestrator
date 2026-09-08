@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using Jobs.Connectors;
+using Jobs.Diagnostics;
 using Jobs.JobsEntities.Interfaces;
 using Jobs.Pipelines.Interfaces;
 
@@ -10,13 +11,11 @@ namespace Jobs.JobsEntities;
 /// </summary>
 /// <param name="definition">Описание задания</param>
 /// <param name="serviceProvider">Провайдер сервисов</param>
-/// <param name="jobStartOptions">Параметры запуска задания</param>
 internal sealed class BasicJobRuntime(
     JobDefinition definition,
-    IServiceProvider serviceProvider,
-    JobStartOptions? jobStartOptions) : IJobRuntime
+    IServiceProvider serviceProvider) : IJobRuntime
 {
-    private IReadOnlyList<IPipelineRunner> _pipelineRunners = [];
+    private IPipelineRunner[] _pipelineRunners = [];
 
     /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -35,18 +34,20 @@ internal sealed class BasicJobRuntime(
                 runtimeCancellation.Token);
         }
 
-        _pipelineRunners = definition.Pipelines
+        var pipelineRunners = definition.Pipelines
             .Select(pipeline => pipeline.CreateRunner(
                 serviceProvider,
                 restoredCheckpoint?.Sources.GetValueOrDefault(pipeline.SourceName) ?? new SourcePosition(0)))
             .ToArray();
 
-        var pipelineTasks = _pipelineRunners
+        Volatile.Write(ref _pipelineRunners, pipelineRunners);
+
+        var pipelineTasks = pipelineRunners
             .Select(pipeline => pipeline.RunAsync(runtimeCancellation.Token))
             .ToList();
 
         var coordinatorTask = checkpointCoordinator?.RunAsync(
-            _pipelineRunners,
+            pipelineRunners,
             definition.StateRegistry,
             runtimeCancellation.Token);
 
@@ -107,14 +108,31 @@ internal sealed class BasicJobRuntime(
         if (definition.CheckpointOptions is not { Enabled: true } checkpointOptions)
             return null;
 
-        if (jobStartOptions is null)
-            throw new InvalidOperationException("Checkpoint start options were not configured.");
-
         return new CheckpointCoordinator(new CheckpointCoordinatorOptions
         {
-            CheckpointOptions = checkpointOptions,
-            JobStartOptions = jobStartOptions
+            CheckpointOptions = checkpointOptions
         });
+    }
+
+    /// <summary>
+    /// Возвращает агрегированные показатели выполнения и состояние задания.
+    /// </summary>
+    internal JobRuntimeSnapshot CaptureDiagnostics()
+    {
+        var pipelineSnapshots = Volatile.Read(ref _pipelineRunners)
+            .Select(pipeline => pipeline.CaptureDiagnostics())
+            .ToArray();
+
+        var processedCount = pipelineSnapshots.Sum(snapshot => snapshot.ProcessedCount);
+        var lastProcessed = pipelineSnapshots
+            .Where(snapshot => snapshot.LastProcessedAt is not null)
+            .MaxBy(snapshot => snapshot.LastProcessedAt);
+
+        return new JobRuntimeSnapshot(
+            processedCount,
+            lastProcessed?.LastProcessedAt,
+            lastProcessed?.LastProcessedMessage,
+            definition.StateRegistry.CaptureInspections());
     }
 
     /// <summary>

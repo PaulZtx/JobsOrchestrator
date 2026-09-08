@@ -1,5 +1,6 @@
 using Jobs.Connectors;
 using Jobs.Connectors.Interfaces;
+using Jobs.JobsEntities;
 using Jobs.JobsEntities.Interfaces;
 
 namespace TestBuilds;
@@ -37,7 +38,11 @@ public class SampleJob : IJob
     {
         var state = builder.RegisterState<Test>("test-state");
 
-        builder.EnableCheckpoints(TimeSpan.FromSeconds(1))
+        builder.ConfigureCheckpoints(new CheckpointOptions
+        {
+            Enabled = true,
+            DelayMillisecond = 1_000
+        })
             .Source(
                 "File",
                 _ => new JsonFileConnectorSource<Test>(Path.Combine(AppContext.BaseDirectory, "Test.json")))
