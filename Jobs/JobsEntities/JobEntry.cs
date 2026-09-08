@@ -3,17 +3,17 @@
 namespace Jobs.JobsEntities;
 
 /// <summary>
-/// Фактическая единица Job
+/// Сведения о запущенном задании
 /// </summary>
 public class JobEntry
 {
     /// <summary>
-    /// Идентификатор Job
+    /// Идентификатор задания
     /// </summary>
     public Guid JobId { get; set; }
     
     /// <summary>
-    /// Реализация Job
+    /// Реализация задания
     /// </summary>
     public required IJob Job { get; set; }
     
@@ -23,12 +23,12 @@ public class JobEntry
     public required CancellationTokenSource CancellationTokenSource { get; set; }
     
     /// <summary>
-    /// Runtime текущей попытки выполнения Job
+    /// Среда выполнения текущей попытки задания
     /// </summary>
     public required IJobRuntime Runtime { get; set; }
 
     /// <summary>
-    /// Таска, в которой запущена джоба
+    /// Задача с выполняемым заданием
     /// </summary>
     public required Task JobTask { get; set; }
 }

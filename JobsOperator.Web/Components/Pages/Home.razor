@@ -1,0 +1,555 @@
+@page "/"
+@implements IAsyncDisposable
+@using JobsOperator.Web.Services
+@inject JobExecutionService JobExecutionService
+
+<PageTitle>JobsOperator — мониторинг заданий</PageTitle>
+
+<header class="page-header">
+    <div>
+        <span class="eyebrow">JobsOperator</span>
+        <h1>Задания</h1>
+        <p>Запуск, состояние и поток обработки в одном месте.</p>
+    </div>
+    <div class="live-indicator" title="Данные обновляются автоматически">
+        <span></span>
+        Обновляется
+    </div>
+</header>
+
+<section class="overview" aria-label="Сводка">
+    <div class="overview-item">
+        <span>Всего</span>
+        <strong>@_jobs.Count</strong>
+    </div>
+    <div class="overview-item">
+        <span>В работе</span>
+        <strong>@ActiveJobsCount</strong>
+    </div>
+    <div class="overview-item overview-item-wide">
+        <span>Обработано</span>
+        <strong>@FormatNumber(TotalProcessedCount)</strong>
+    </div>
+    <div class="overview-item overview-item-wide">
+        <span>Последняя активность</span>
+        <strong class="overview-time">@FormatRelativeTime(LastActivityAt)</strong>
+    </div>
+</section>
+
+<details class="upload-panel" open="@(_jobs.Count == 0)">
+    <summary>
+        <span>
+            <strong>Добавить сборку</strong>
+            <small>DLL с реализацией IJob и зависимости</small>
+        </span>
+        <span class="summary-action">Выбрать</span>
+    </summary>
+
+    <div class="upload-content">
+        <label class="file-picker" for="assembly-files">
+            <span>Перетащите или выберите DLL</span>
+            <small>До 20 файлов, общий размер до 100 МБ</small>
+        </label>
+        <InputFile id="assembly-files"
+                   OnChange="OnFilesSelected"
+                   accept=".dll"
+                   multiple />
+
+        @if (_selectedFiles.Count > 0)
+        {
+            <ul class="files" aria-label="Выбранные файлы">
+                @foreach (var file in _selectedFiles)
+                {
+                    <li>
+                        <span>@file.Name</span>
+                        <small>@FormatSize(file.Size)</small>
+                    </li>
+                }
+            </ul>
+        }
+
+        <button class="button button-primary"
+                disabled="@(_isUploading || _selectedFiles.Count == 0)"
+                @onclick="UploadAndStartAsync">
+            @(_isUploading ? "Добавляю…" : "Добавить и запустить")
+        </button>
+    </div>
+</details>
+
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <p class="message @(_hasError ? "message-error" : "message-success")" role="status">
+        @_message
+    </p>
+}
+
+<section class="jobs-section" aria-labelledby="jobs-title">
+    <div class="section-heading">
+        <h2 id="jobs-title">Все задания</h2>
+        <span>@_jobs.Count</span>
+    </div>
+
+    @if (_jobs.Count == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-icon">01</span>
+            <strong>Заданий пока нет</strong>
+            <p>Добавьте сборку — найденные реализации IJob появятся здесь.</p>
+        </div>
+    }
+    else
+    {
+        <div class="job-list">
+            @foreach (var job in _jobs)
+            {
+                <article class="job-card">
+                    <div class="job-heading">
+                        <div class="job-identity">
+                            <span class="assembly-label">@job.AssemblyName</span>
+                            <h3>@GetShortJobName(job.JobType)</h3>
+                            <span class="job-namespace">@job.JobType</span>
+                        </div>
+                        <span class="@($"status-badge status-{GetStatusClass(job.Status)}")">
+                            <span class="status-dot"></span>
+                            @GetStatusLabel(job.Status)
+                        </span>
+                    </div>
+
+                    <div class="job-metrics">
+                        <div>
+                            <span>Обработано</span>
+                            <strong>@FormatNumber(job.ProcessedCount)</strong>
+                        </div>
+                        <div>
+                            <span>Запущено</span>
+                            <strong>@job.StartedAt.ToLocalTime().ToString("dd.MM, HH:mm:ss")</strong>
+                        </div>
+                        <div>
+                            <span>Последнее сообщение</span>
+                            <strong>@FormatRelativeTime(job.LastProcessedAt)</strong>
+                        </div>
+                    </div>
+
+                    <div class="last-message">
+                        <div class="block-label">
+                            <span>Последнее обработанное сообщение</span>
+                            @if (job.LastProcessedAt is not null)
+                            {
+                                <time>@job.LastProcessedAt.Value.ToLocalTime().ToString("HH:mm:ss")</time>
+                            }
+                        </div>
+                        @if (string.IsNullOrWhiteSpace(job.LastProcessedMessage))
+                        {
+                            <p>Сообщений пока не было.</p>
+                        }
+                        else
+                        {
+                            <code>@job.LastProcessedMessage</code>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(job.ErrorMessage))
+                    {
+                        <p class="job-error" role="alert">@job.ErrorMessage</p>
+                    }
+
+                    <details class="states-panel">
+                        <summary>
+                            <span>Состояния IState</span>
+                            <span>@job.States.Count @GetStateWord(job.States.Count)</span>
+                        </summary>
+
+                        <div class="states-content">
+                            @if (job.States.Count == 0)
+                            {
+                                <p class="states-empty">В задании нет зарегистрированных состояний.</p>
+                            }
+                            else
+                            {
+                                @foreach (var state in job.States)
+                                {
+                                    <section class="state-block">
+                                        <div class="state-heading">
+                                            <div>
+                                                <strong>@state.Name</strong>
+                                                <span>@state.ItemType</span>
+                                            </div>
+                                            <span>@FormatNumber(state.ItemCount)</span>
+                                        </div>
+
+                                        @if (state.Items.Count == 0)
+                                        {
+                                            <p class="states-empty">Коллекция пуста.</p>
+                                        }
+                                        else
+                                        {
+                                            <ol class="state-items">
+                                                @foreach (var item in state.Items)
+                                                {
+                                                    <li><code>@item</code></li>
+                                                }
+                                            </ol>
+
+                                            @if (state.ItemCount > state.Items.Count)
+                                            {
+                                                <small class="state-limit">
+                                                    Показано @state.Items.Count из @FormatNumber(state.ItemCount) элементов.
+                                                </small>
+                                            }
+                                        }
+                                    </section>
+                                }
+                            }
+                        </div>
+                    </details>
+
+                    <footer class="job-footer">
+                        <code title="Идентификатор карточки">@job.JobId</code>
+                        <div class="job-actions">
+                            @if (job.Status is ManagedJobState.Running)
+                            {
+                                <button class="button button-danger"
+                                        disabled="@_busyJobs.Contains(job.JobId)"
+                                        @onclick="() => StopAsync(job.JobId)">
+                                    @(_busyJobs.Contains(job.JobId) ? "Отменяю…" : "Отменить")
+                                </button>
+                            }
+                            else if (job.Status is ManagedJobState.Starting or ManagedJobState.Cancelling)
+                            {
+                                <button class="button button-secondary" disabled>
+                                    @(job.Status == ManagedJobState.Starting ? "Запускаю…" : "Останавливаю…")
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="button button-danger"
+                                        disabled="@_busyJobs.Contains(job.JobId)"
+                                        @onclick="() => CancelAndRemoveAsync(job.JobId)">
+                                    @(_busyJobs.Contains(job.JobId) ? "Отменяю…" : "Отменить")
+                                </button>
+                                <button class="button button-primary"
+                                        disabled="@_busyJobs.Contains(job.JobId)"
+                                        @onclick="() => StartJobAsync(job.JobId)">
+                                    @(_busyJobs.Contains(job.JobId) ? "Запускаю…" : "Запустить")
+                                </button>
+                            }
+                        </div>
+                    </footer>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+<p class="notice">Сборки выполняются внутри процесса сервера. Загружайте только доверенные DLL.</p>
+
+@code {
+    private const int MaxFileCount = 20;
+    private readonly HashSet<Guid> _busyJobs = [];
+    private readonly CancellationTokenSource _refreshCancellation = new();
+    private IReadOnlyList<IBrowserFile> _selectedFiles = [];
+    private IReadOnlyList<RunningJobInfo> _jobs = [];
+    private Task? _refreshTask;
+    private bool _isUploading;
+    private bool _hasError;
+    private string? _message;
+
+    private int ActiveJobsCount => _jobs.Count(job =>
+        job.Status is ManagedJobState.Running or ManagedJobState.Starting or ManagedJobState.Cancelling);
+
+    private long TotalProcessedCount => _jobs.Sum(job => job.ProcessedCount);
+
+    private DateTimeOffset? LastActivityAt => _jobs
+        .Where(job => job.LastProcessedAt is not null)
+        .Select(job => job.LastProcessedAt)
+        .Max();
+
+    /// <summary>
+    /// Загружает первый снимок и включает автоматическое обновление панели
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        RefreshJobs();
+        _refreshTask = RefreshLoopAsync(_refreshCancellation.Token);
+    }
+
+    /// <summary>
+    /// Сохраняет выбранные сборки и сообщает о превышении допустимого количества файлов
+    /// </summary>
+    /// <param name="args">Событие выбора файлов с доступом к выбранным сборкам</param>
+    private void OnFilesSelected(InputFileChangeEventArgs args)
+    {
+        try
+        {
+            _selectedFiles = args.GetMultipleFiles(MaxFileCount);
+            _message = null;
+            _hasError = false;
+        }
+        catch (InvalidOperationException)
+        {
+            _selectedFiles = [];
+            _message = $"Можно выбрать не больше {MaxFileCount} файлов.";
+            _hasError = true;
+        }
+    }
+
+    /// <summary>
+    /// Загружает выбранные сборки, запускает задания и обновляет сообщение панели
+    /// </summary>
+    /// <returns>Задача завершения загрузки и запуска с обновлением карточек и состояния формы</returns>
+    private async Task UploadAndStartAsync()
+    {
+        _isUploading = true;
+        _message = null;
+
+        try
+        {
+            var result = await JobExecutionService.StartAsync(_selectedFiles);
+            RefreshJobs();
+            _hasError = result.StartedJobs.Count == 0;
+            _message = BuildMessage(result);
+
+            if (result.StartedJobs.Count > 0)
+                _selectedFiles = [];
+        }
+        catch (Exception exception)
+        {
+            _hasError = true;
+            _message = exception.Message;
+        }
+        finally
+        {
+            _isUploading = false;
+        }
+    }
+
+    /// <summary>
+    /// Останавливает задание и обновляет его карточку и сообщение панели
+    /// </summary>
+    /// <param name="jobId">Постоянный идентификатор карточки задания</param>
+    /// <returns>Задача завершения запроса остановки и обновления списка заданий</returns>
+    private async Task StopAsync(Guid jobId)
+    {
+        _busyJobs.Add(jobId);
+        _message = null;
+
+        try
+        {
+            var stopped = await JobExecutionService.StopAsync(jobId);
+            _hasError = !stopped;
+            _message = stopped ? "Задание отменено." : "Не удалось отменить задание.";
+        }
+        finally
+        {
+            _busyJobs.Remove(jobId);
+            RefreshJobs();
+        }
+    }
+
+    /// <summary>
+    /// Отменяет задание и удаляет его карточку из списка
+    /// </summary>
+    /// <param name="jobId">Постоянный идентификатор карточки задания</param>
+    /// <returns>Задача завершения запроса удаления и обновления списка заданий</returns>
+    private async Task CancelAndRemoveAsync(Guid jobId)
+    {
+        _busyJobs.Add(jobId);
+        _message = null;
+
+        try
+        {
+            var cancelled = await JobExecutionService.CancelAsync(jobId);
+            _hasError = !cancelled;
+            _message = cancelled ? "Задание отменено и убрано из списка." : "Не удалось отменить задание.";
+        }
+        finally
+        {
+            _busyJobs.Remove(jobId);
+            RefreshJobs();
+        }
+    }
+
+    /// <summary>
+    /// Запускает новую попытку выполнения задания и обновляет панель
+    /// </summary>
+    /// <param name="jobId">Постоянный идентификатор карточки задания</param>
+    /// <returns>Задача завершения запроса запуска и обновления списка заданий</returns>
+    private async Task StartJobAsync(Guid jobId)
+    {
+        _busyJobs.Add(jobId);
+        _message = null;
+
+        try
+        {
+            var started = await JobExecutionService.StartJobAsync(jobId);
+            _hasError = !started;
+            _message = started ? "Задание запущено." : "Не удалось запустить задание.";
+        }
+        finally
+        {
+            _busyJobs.Remove(jobId);
+            RefreshJobs();
+        }
+    }
+
+    /// <summary>
+    /// Обновляет карточки заданий и перерисовывает панель каждую секунду до отмены
+    /// </summary>
+    /// <param name="cancellationToken">Токен отмены операции</param>
+    /// <returns>Задача, завершающаяся после остановки цикла обновления</returns>
+    private async Task RefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await InvokeAsync(() =>
+                {
+                    RefreshJobs();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Закрытие страницы останавливает обновление.
+        }
+    }
+
+    /// <summary>
+    /// Обновляет список карточек по актуальным данным сервиса выполнения
+    /// </summary>
+    private void RefreshJobs() => _jobs = JobExecutionService.GetJobs();
+
+    /// <summary>
+    /// Формирует сообщение о количестве запущенных заданий и возникших ошибках
+    /// </summary>
+    /// <param name="result">Результат запуска с карточками заданий и сообщениями об ошибках</param>
+    /// <returns>Сообщение о результате запуска для отображения на панели</returns>
+    private static string BuildMessage(StartJobsResult result)
+    {
+        var started = result.StartedJobs.Count switch
+        {
+            0 => "Ни одно задание не запущено.",
+            1 => "Задание добавлено и запущено.",
+            _ => $"Добавлено и запущено заданий: {result.StartedJobs.Count}."
+        };
+
+        return result.Errors.Count == 0
+            ? started
+            : $"{started} {string.Join(" ", result.Errors)}";
+    }
+
+    /// <summary>
+    /// Извлекает имя типа задания без пространства имен
+    /// </summary>
+    /// <param name="jobType">Полное имя типа задания</param>
+    /// <returns>Часть имени после последней точки или исходная строка, если точек нет</returns>
+    private static string GetShortJobName(string jobType)
+    {
+        var separator = jobType.LastIndexOf('.');
+        return separator < 0 ? jobType : jobType[(separator + 1)..];
+    }
+
+    /// <summary>
+    /// Возвращает русское название состояния задания
+    /// </summary>
+    /// <param name="status">Текущее состояние карточки задания</param>
+    /// <returns>Подпись состояния или Неизвестно для неподдерживаемого значения</returns>
+    private static string GetStatusLabel(ManagedJobState status) => status switch
+    {
+        ManagedJobState.Starting => "Запускается",
+        ManagedJobState.Running => "Выполняется",
+        ManagedJobState.Cancelling => "Останавливается",
+        ManagedJobState.Stopped => "Остановлено",
+        ManagedJobState.Completed => "Завершено",
+        ManagedJobState.Failed => "Ошибка",
+        _ => "Неизвестно"
+    };
+
+    /// <summary>
+    /// Выбирает CSS-класс индикатора состояния задания
+    /// </summary>
+    /// <param name="status">Текущее состояние карточки задания</param>
+    /// <returns>CSS-класс состояния или stopped для значений без отдельного оформления</returns>
+    private static string GetStatusClass(ManagedJobState status) => status switch
+    {
+        ManagedJobState.Running => "running",
+        ManagedJobState.Starting or ManagedJobState.Cancelling => "pending",
+        ManagedJobState.Completed => "completed",
+        ManagedJobState.Failed => "failed",
+        _ => "stopped"
+    };
+
+    /// <summary>
+    /// Выбирает форму слова коллекция по количеству состояний
+    /// </summary>
+    /// <param name="count">Количество коллекций состояния</param>
+    /// <returns>Форма коллекция для одного, коллекции для двух–четырех и коллекций для остальных значений</returns>
+    private static string GetStateWord(int count) => count switch
+    {
+        1 => "коллекция",
+        2 or 3 or 4 => "коллекции",
+        _ => "коллекций"
+    };
+
+    /// <summary>
+    /// Форматирует целое число с разделителями групп разрядов русской локали
+    /// </summary>
+    /// <param name="value">Число для отображения</param>
+    /// <returns>Число без дробной части с разделителями групп разрядов</returns>
+    private static string FormatNumber(long value) => value.ToString("N0", new System.Globalization.CultureInfo("ru-RU"));
+
+    /// <summary>
+    /// Форматирует время события относительно текущего момента
+    /// </summary>
+    /// <param name="value">Время события или null, если событие еще не происходило</param>
+    /// <returns>Относительное время для событий моложе часа, локальная дата и время для остальных или тире при отсутствии события</returns>
+    private static string FormatRelativeTime(DateTimeOffset? value)
+    {
+        if (value is null)
+            return "—";
+
+        var elapsed = DateTimeOffset.UtcNow - value.Value.ToUniversalTime();
+
+        if (elapsed < TimeSpan.FromSeconds(10))
+            return "только что";
+
+        if (elapsed < TimeSpan.FromMinutes(1))
+            return $"{Math.Max(1, (int)elapsed.TotalSeconds)} сек. назад";
+
+        if (elapsed < TimeSpan.FromHours(1))
+            return $"{Math.Max(1, (int)elapsed.TotalMinutes)} мин. назад";
+
+        return value.Value.ToLocalTime().ToString("dd.MM, HH:mm");
+    }
+
+    /// <summary>
+    /// Форматирует размер файла в байтах, килобайтах или мегабайтах
+    /// </summary>
+    /// <param name="bytes">Размер файла в байтах</param>
+    /// <returns>Размер с единицей измерения и одним десятичным знаком для килобайт и мегабайт</returns>
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024)
+            return $"{bytes} Б";
+
+        if (bytes < 1024 * 1024)
+            return $"{bytes / 1024d:F1} КБ";
+
+        return $"{bytes / 1024d / 1024d:F1} МБ";
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        await _refreshCancellation.CancelAsync();
+
+        if (_refreshTask is not null)
+            await _refreshTask;
+
+        _refreshCancellation.Dispose();
+    }
+}

@@ -1,7 +1,9 @@
+using Jobs.Enums;
+
 namespace Jobs.JobsEntities;
 
 /// <summary>
-/// Параметры создания контрольных точек
+/// Параметры создания и восстановления контрольных точек, настраиваемые заданием
 /// </summary>
 public sealed class CheckpointOptions
 {
@@ -14,4 +16,15 @@ public sealed class CheckpointOptions
     /// Интервал между контрольными точками в миллисекундах
     /// </summary>
     public int DelayMillisecond { get; init; }
+
+    /// <summary>
+    /// Путь к файлу контрольной точки
+    /// </summary>
+    public string? PathToCheckpoint { get; init; }
+
+    /// <summary>
+    /// Режим восстановления из контрольной точки
+    /// </summary>
+    public CheckpointRestoreMode RestoreMode { get; init; }
+        = CheckpointRestoreMode.ResumeOrCreate;
 }

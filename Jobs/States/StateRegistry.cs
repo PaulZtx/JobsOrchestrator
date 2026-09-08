@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Jobs.Diagnostics;
 using Jobs.States.Interfaces;
 using Jobs.States.Models;
 
@@ -9,6 +10,7 @@ namespace Jobs.States;
 /// </summary>
 internal sealed class StateRegistry
 {
+    private const int MaxInspectionItems = 50;
     private readonly ConcurrentDictionary<string, ICheckpointState> _states =
         new(StringComparer.Ordinal);
 
@@ -50,6 +52,7 @@ internal sealed class StateRegistry
     /// </summary>
     /// <param name="snapshots">Снимки состояний по их наименованиям</param>
     /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Задача завершения восстановления зарегистрированных состояний, для которых переданы снимки</returns>
     public async Task RestoreAllAsync(
         IReadOnlyDictionary<string, StateSnapshot> snapshots,
         CancellationToken cancellationToken)
@@ -62,4 +65,14 @@ internal sealed class StateRegistry
 
         await Task.WhenAll(restoreTasks);
     }
+
+    /// <summary>
+    /// Создает диагностические снимки зарегистрированных состояний
+    /// </summary>
+    /// <returns>Упорядоченные по имени диагностические снимки состояний, поддерживающих просмотр</returns>
+    internal IReadOnlyList<JobStateSnapshot> CaptureInspections() => _states.Values
+        .OfType<IInspectableState>()
+        .Select(state => state.CaptureInspection(MaxInspectionItems))
+        .OrderBy(state => state.Name, StringComparer.Ordinal)
+        .ToArray();
 }

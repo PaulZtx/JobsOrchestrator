@@ -6,8 +6,8 @@
 public interface IConnector
 {
     /// <summary>
-    /// Попытка соединения
+    /// Устанавливает соединение с внешним узлом
     /// </summary>
-    /// <returns></returns>
+    /// <returns>Признак успешного соединения</returns>
     bool TryConnect();
 }

@@ -4,6 +4,14 @@ using Jobs.Connectors.Interfaces;
 
 namespace Jobs.Connectors;
 
+/// <summary>
+/// Читает сообщения из раздела Kafka
+/// </summary>
+/// <typeparam name="T">Тип значений сообщений</typeparam>
+/// <param name="serializer">Сериализатор значений</param>
+/// <param name="config">Конфигурация потребителя Kafka</param>
+/// <param name="topic">Имя темы</param>
+/// <param name="partition">Номер раздела</param>
 public class KafkaConnectorSource<T>(
     JobsEntities.Interfaces.ISerializer<T> serializer,
     ConsumerConfig config,
@@ -12,6 +20,7 @@ public class KafkaConnectorSource<T>(
 {
     private IConsumer<Ignore, byte[]>? _consumer;
 
+    /// <inheritdoc />
     public async IAsyncEnumerable<SourceRecord<T>> ReadNextAsync(
         SourcePosition position,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -21,7 +30,7 @@ public class KafkaConnectorSource<T>(
 
         try
         {
-            // SourcePosition points to the next Kafka message that must be read.
+            // Позиция указывает следующее сообщение Kafka для чтения
             consumer.Assign(new TopicPartitionOffset(
                 topic,
                 new Partition(partition),
@@ -29,6 +38,10 @@ public class KafkaConnectorSource<T>(
 
             while (!cancellationToken.IsCancellationRequested)
             {
+                // Consumer API синхронный. Асинхронный переход нужен до блокирующего
+                // ожидания, чтобы запуск конвейера и координатора checkpoint не зависел
+                // от появления первого или следующего сообщения.
+                await Task.Yield();
                 var consumeResult = consumer.Consume(cancellationToken);
 
                 if (consumeResult.IsPartitionEOF)
@@ -56,13 +69,15 @@ public class KafkaConnectorSource<T>(
         }
     }
 
+    /// <inheritdoc />
     public Task CommitAsync(SourcePosition position, CancellationToken cancellationToken)
     {
-        // The framework checkpoint is the source of truth. Kafka offsets are not
-        // committed independently, otherwise they can get ahead of handler state.
+        // Контрольная точка фреймворка является источником истины
+        // Смещения Kafka не фиксируются отдельно, чтобы не опередить состояние обработчика
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc />
     public bool TryConnect()
     {
         if (_consumer is not null)

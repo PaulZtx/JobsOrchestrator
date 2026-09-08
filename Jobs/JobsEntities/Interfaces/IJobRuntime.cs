@@ -1,12 +1,14 @@
 namespace Jobs.JobsEntities.Interfaces;
 
 /// <summary>
-/// Runtime для обработки Jobs
+/// Среда выполнения задания
 /// </summary>
 public interface IJobRuntime
 {
     /// <summary>
-    /// Запустить собранный граф Job
+    /// Запускает собранный граф задания
     /// </summary>
+    /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Задача выполнения задания до завершения конвейеров, отмены или ошибки</returns>
     Task RunAsync(CancellationToken cancellationToken);
 }

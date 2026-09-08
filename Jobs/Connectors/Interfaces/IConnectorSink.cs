@@ -1,10 +1,16 @@
 ﻿namespace Jobs.Connectors.Interfaces;
 
+/// <summary>
+/// Принимающий коннектор для элементов заданного типа
+/// </summary>
+/// <typeparam name="T">Тип принимаемых значений</typeparam>
 public interface IConnectorSink<T> : IConnector
 {
     /// <summary>
-    /// Попытка записи в принимающий узел
+    /// Записывает элемент в принимающий узел
     /// </summary>
-    /// <returns></returns>
+    /// <param name="value">Записываемый элемент</param>
+    /// <param name="token">Токен отмены</param>
+    /// <returns>Признак успешной записи</returns>
     Task<bool> WriteAsync(SinkRecord<T> value, CancellationToken token);
 }

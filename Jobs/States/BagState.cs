@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Jobs.Diagnostics;
 using Jobs.States.Interfaces;
 using Jobs.States.Models;
 
@@ -9,7 +10,8 @@ namespace Jobs.States;
 /// Потокобезопасное состояние в виде неупорядоченной коллекции
 /// </summary>
 /// <typeparam name="T">Тип элементов состояния</typeparam>
-internal sealed class BagState<T>(string name) : IState<T>, ICheckpointState
+/// <param name="name">Уникальное имя состояния</param>
+internal sealed class BagState<T>(string name) : IState<T>, ICheckpointState, IInspectableState
 {
     private const int CurrentSnapshotVersion = 1;
 
@@ -35,6 +37,26 @@ internal sealed class BagState<T>(string name) : IState<T>, ICheckpointState
 
         lock (_lock)
             return _collection.Where(predicate).ToArray();
+    }
+
+    /// <inheritdoc />
+    JobStateSnapshot IInspectableState.CaptureInspection(int maxItems)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxItems);
+
+        lock (_lock)
+        {
+            var items = _collection
+                .Take(maxItems)
+                .Select(DiagnosticValueFormatter.Format)
+                .ToArray();
+
+            return new JobStateSnapshot(
+                Name,
+                typeof(T).FullName ?? typeof(T).Name,
+                _collection.Count,
+                items);
+        }
     }
 
     /// <inheritdoc />

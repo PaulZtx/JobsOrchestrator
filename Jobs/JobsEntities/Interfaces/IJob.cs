@@ -6,8 +6,8 @@
 public interface IJob
 {
     /// <summary>
-    /// Конфигурация Job
+    /// Настраивает конвейеры задания
     /// </summary>
-    /// <param name="builder"></param>
+    /// <param name="builder">Построитель задания</param>
     void Configure(IJobBuilder builder);
 }

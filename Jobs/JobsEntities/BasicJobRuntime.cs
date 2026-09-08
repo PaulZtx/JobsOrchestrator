@@ -1,7 +1,8 @@
 using System.Runtime.ExceptionServices;
 using Jobs.Connectors;
+using Jobs.Diagnostics;
 using Jobs.JobsEntities.Interfaces;
-using Jobs.Sources.Interfaces;
+using Jobs.Pipelines.Interfaces;
 
 namespace Jobs.JobsEntities;
 
@@ -10,13 +11,11 @@ namespace Jobs.JobsEntities;
 /// </summary>
 /// <param name="definition">Описание задания</param>
 /// <param name="serviceProvider">Провайдер сервисов</param>
-/// <param name="jobStartOptions">Параметры запуска задания</param>
 internal sealed class BasicJobRuntime(
     JobDefinition definition,
-    IServiceProvider serviceProvider,
-    JobStartOptions? jobStartOptions) : IJobRuntime
+    IServiceProvider serviceProvider) : IJobRuntime
 {
-    private IReadOnlyList<ISourceRunner> _sourceRunners = [];
+    private IPipelineRunner[] _pipelineRunners = [];
 
     /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -35,35 +34,37 @@ internal sealed class BasicJobRuntime(
                 runtimeCancellation.Token);
         }
 
-        _sourceRunners = definition.Sources
-            .Select(source => source.CreateRunner(
+        var pipelineRunners = definition.Pipelines
+            .Select(pipeline => pipeline.CreateRunner(
                 serviceProvider,
-                restoredCheckpoint?.Sources.GetValueOrDefault(source.Name) ?? new SourcePosition(0)))
+                restoredCheckpoint?.Sources.GetValueOrDefault(pipeline.SourceName) ?? new SourcePosition(0)))
             .ToArray();
 
-        var sourceTasks = _sourceRunners
-            .Select(source => source.RunAsync(runtimeCancellation.Token))
+        Volatile.Write(ref _pipelineRunners, pipelineRunners);
+
+        var pipelineTasks = pipelineRunners
+            .Select(pipeline => pipeline.RunAsync(runtimeCancellation.Token))
             .ToList();
 
         var coordinatorTask = checkpointCoordinator?.RunAsync(
-            _sourceRunners,
+            pipelineRunners,
             definition.StateRegistry,
             runtimeCancellation.Token);
 
         try
         {
-            while (sourceTasks.Count > 0)
+            while (pipelineTasks.Count > 0)
             {
                 var tasksToObserve = coordinatorTask is null
-                    ? sourceTasks
-                    : sourceTasks.Append(coordinatorTask);
+                    ? pipelineTasks
+                    : pipelineTasks.Append(coordinatorTask);
 
                 var completed = await Task.WhenAny(tasksToObserve);
 
                 if (ReferenceEquals(completed, coordinatorTask))
                 {
                     await runtimeCancellation.CancelAsync();
-                    await ObserveFailuresAsync(sourceTasks);
+                    await ObserveFailuresAsync(pipelineTasks);
 
                     if (completed.IsFaulted)
                         ExceptionDispatchInfo.Capture(completed.Exception!.GetBaseException()).Throw();
@@ -72,15 +73,15 @@ internal sealed class BasicJobRuntime(
                     throw new InvalidOperationException("Checkpoint coordinator stopped unexpectedly.");
                 }
 
-                sourceTasks.Remove(completed);
+                pipelineTasks.Remove(completed);
 
                 if (completed.IsFaulted || completed.IsCanceled)
                 {
                     await runtimeCancellation.CancelAsync();
                     await ObserveFailuresAsync(
                         coordinatorTask is null
-                            ? sourceTasks
-                            : sourceTasks.Append(coordinatorTask));
+                            ? pipelineTasks
+                            : pipelineTasks.Append(coordinatorTask));
 
                     if (completed.IsFaulted)
                         ExceptionDispatchInfo.Capture(completed.Exception!.GetBaseException()).Throw();
@@ -107,20 +108,39 @@ internal sealed class BasicJobRuntime(
         if (definition.CheckpointOptions is not { Enabled: true } checkpointOptions)
             return null;
 
-        if (jobStartOptions is null)
-            throw new InvalidOperationException("Checkpoint start options were not configured.");
-
         return new CheckpointCoordinator(new CheckpointCoordinatorOptions
         {
-            CheckpointOptions = checkpointOptions,
-            JobStartOptions = jobStartOptions
+            CheckpointOptions = checkpointOptions
         });
+    }
+
+    /// <summary>
+    /// Возвращает агрегированные показатели выполнения и состояние задания
+    /// </summary>
+    /// <returns>Агрегированный снимок счетчиков конвейеров, последнего сообщения и внутренних состояний задания</returns>
+    internal JobRuntimeSnapshot CaptureDiagnostics()
+    {
+        var pipelineSnapshots = Volatile.Read(ref _pipelineRunners)
+            .Select(pipeline => pipeline.CaptureDiagnostics())
+            .ToArray();
+
+        var processedCount = pipelineSnapshots.Sum(snapshot => snapshot.ProcessedCount);
+        var lastProcessed = pipelineSnapshots
+            .Where(snapshot => snapshot.LastProcessedAt is not null)
+            .MaxBy(snapshot => snapshot.LastProcessedAt);
+
+        return new JobRuntimeSnapshot(
+            processedCount,
+            lastProcessed?.LastProcessedAt,
+            lastProcessed?.LastProcessedMessage,
+            definition.StateRegistry.CaptureInspections());
     }
 
     /// <summary>
     /// Ожидает завершения задач и подавляет уже наблюдаемые ошибки
     /// </summary>
     /// <param name="tasks">Задачи для ожидания</param>
+    /// <returns>Задача, завершающаяся после всех переданных задач без повторного распространения их ошибок или отмены</returns>
     private static async Task ObserveFailuresAsync(IEnumerable<Task> tasks)
     {
         try
@@ -129,7 +149,7 @@ internal sealed class BasicJobRuntime(
         }
         catch
         {
-            // Первая ошибка источника или координатора обрабатывается в основном цикле
+            // Первая ошибка конвейера или координатора обрабатывается в основном цикле
         }
     }
 }
