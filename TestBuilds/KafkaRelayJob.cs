@@ -56,6 +56,12 @@ public sealed class KafkaRelayJob : IJob
                     outputTopic));
     }
 
+    /// <summary>
+    /// Читает переменную окружения с подстановкой значения по умолчанию
+    /// </summary>
+    /// <param name="name">Имя переменной окружения</param>
+    /// <param name="fallback">Значение при отсутствии переменной или наличии только пробельных символов</param>
+    /// <returns>Непустое значение переменной окружения или переданное значение по умолчанию</returns>
     private static string GetEnvironmentValue(string name, string fallback)
     {
         var value = Environment.GetEnvironmentVariable(name);

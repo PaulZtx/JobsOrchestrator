@@ -52,6 +52,7 @@ internal sealed class StateRegistry
     /// </summary>
     /// <param name="snapshots">Снимки состояний по их наименованиям</param>
     /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Задача завершения восстановления зарегистрированных состояний, для которых переданы снимки</returns>
     public async Task RestoreAllAsync(
         IReadOnlyDictionary<string, StateSnapshot> snapshots,
         CancellationToken cancellationToken)
@@ -66,8 +67,9 @@ internal sealed class StateRegistry
     }
 
     /// <summary>
-    /// Создает диагностические снимки зарегистрированных состояний.
+    /// Создает диагностические снимки зарегистрированных состояний
     /// </summary>
+    /// <returns>Упорядоченные по имени диагностические снимки состояний, поддерживающих просмотр</returns>
     internal IReadOnlyList<JobStateSnapshot> CaptureInspections() => _states.Values
         .OfType<IInspectableState>()
         .Select(state => state.CaptureInspection(MaxInspectionItems))

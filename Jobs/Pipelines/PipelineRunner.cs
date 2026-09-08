@@ -87,6 +87,7 @@ internal sealed class PipelineRunner<TInput, TOutput>(
     /// <summary>
     /// Освобождает ресурсы принимающего коннектора после остановки конвейера
     /// </summary>
+    /// <returns>Операция завершения освобождения ресурсов принимающего коннектора, если он поддерживает освобождение</returns>
     private async ValueTask DisposeSinkAsync()
     {
         if (sink is IAsyncDisposable asyncDisposable)
@@ -104,6 +105,7 @@ internal sealed class PipelineRunner<TInput, TOutput>(
     /// </summary>
     /// <param name="writer">Канал для записи элементов</param>
     /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Задача чтения источника, завершающая запись в канал после окончания чтения, отмены или ошибки</returns>
     private async Task ProduceAsync(
         ChannelWriter<SourceRecord<TInput>> writer,
         CancellationToken cancellationToken)
@@ -152,6 +154,7 @@ internal sealed class PipelineRunner<TInput, TOutput>(
     /// </summary>
     /// <param name="reader">Канал для чтения элементов</param>
     /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Задача завершения обработки и записи элементов канала либо распространения ошибки или отмены</returns>
     private async Task ConsumeAsync(
         ChannelReader<SourceRecord<TInput>> reader,
         CancellationToken cancellationToken)
@@ -250,8 +253,9 @@ internal sealed class PipelineRunner<TInput, TOutput>(
     }
 
     /// <summary>
-    /// Обновляет счетчики после успешной записи сообщения в принимающий узел.
+    /// Обновляет счетчики после успешной записи сообщения в принимающий узел
     /// </summary>
+    /// <param name="message">Входное сообщение, успешно записанное после обработки в принимающий узел</param>
     private void RecordProcessed(TInput message)
     {
         var formattedMessage = DiagnosticValueFormatter.Format(message);

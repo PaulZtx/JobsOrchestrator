@@ -116,6 +116,7 @@ internal sealed class CheckpointCoordinator
     /// <param name="pipelineRunners">Обработчики конвейеров</param>
     /// <param name="stateRegistry">Реестр внутренних состояний</param>
     /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Задача периодического сохранения контрольных точек, выполняющаяся до отмены или ошибки</returns>
     public async Task RunAsync(
         IReadOnlyList<IPipelineRunner> pipelineRunners,
         StateRegistry stateRegistry,
@@ -137,6 +138,7 @@ internal sealed class CheckpointCoordinator
     /// <param name="pipelineRunners">Обработчики конвейеров</param>
     /// <param name="stateRegistry">Реестр внутренних состояний</param>
     /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Задача сохранения согласованной контрольной точки и возобновления конвейеров</returns>
     private async Task CaptureAsync(
         IReadOnlyList<IPipelineRunner> pipelineRunners,
         StateRegistry stateRegistry,
@@ -175,6 +177,7 @@ internal sealed class CheckpointCoordinator
     /// <param name="sourcePositions">Позиции источников</param>
     /// <param name="stateSnapshots">Снимки внутренних состояний</param>
     /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Задача завершения записи временного файла и атомарной замены файла контрольной точки</returns>
     private async Task SaveAsync(
         IReadOnlyDictionary<string, SourcePosition> sourcePositions,
         IReadOnlyDictionary<string, StateSnapshot> stateSnapshots,

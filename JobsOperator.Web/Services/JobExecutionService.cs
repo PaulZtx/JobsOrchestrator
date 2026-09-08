@@ -9,8 +9,11 @@ using Microsoft.AspNetCore.Components.Forms;
 namespace JobsOperator.Web.Services;
 
 /// <summary>
-/// Загружает сборки, управляет заданиями и предоставляет снимки для панели мониторинга.
+/// Загружает сборки, управляет заданиями и предоставляет снимки для панели мониторинга
 /// </summary>
+/// <param name="orchestrator">Оркестратор запуска и остановки заданий</param>
+/// <param name="environment">Окружение приложения с корневым каталогом для сохранения сборок</param>
+/// <param name="logger">Журнал ошибок загрузки и запуска заданий</param>
 public sealed class JobExecutionService(
     JobsOrchestrator orchestrator,
     IWebHostEnvironment environment,
@@ -21,21 +24,26 @@ public sealed class JobExecutionService(
     private readonly ConcurrentDictionary<Guid, ManagedJob> _jobs = [];
 
     /// <summary>
-    /// Возвращает загруженные задания вместе с актуальными показателями выполнения.
+    /// Возвращает загруженные задания вместе с актуальными показателями выполнения
     /// </summary>
+    /// <returns>Актуальные карточки всех загруженных заданий в порядке убывания времени запуска</returns>
     public IReadOnlyList<RunningJobInfo> GetJobs() => _jobs.Values
         .Select(CreateInfo)
         .OrderByDescending(job => job.StartedAt)
         .ToArray();
 
     /// <summary>
-    /// Возвращает задания. Оставлено для совместимости с прежним интерфейсом.
+    /// Возвращает задания. Оставлено для совместимости с прежним интерфейсом
     /// </summary>
+    /// <returns>Актуальные карточки всех загруженных заданий, включая завершенные и остановленные</returns>
     public IReadOnlyList<RunningJobInfo> GetRunningJobs() => GetJobs();
 
     /// <summary>
-    /// Сохраняет выбранные сборки и запускает найденные задания.
+    /// Сохраняет выбранные сборки и запускает найденные задания
     /// </summary>
+    /// <param name="files">Выбранные в браузере файлы сборок</param>
+    /// <param name="cancellationToken">Токен отмены операции</param>
+    /// <returns>Задача, результат которой содержит запущенные задания и ошибки проверки, загрузки или запуска</returns>
     public async Task<StartJobsResult> StartAsync(
         IReadOnlyCollection<IBrowserFile> files,
         CancellationToken cancellationToken = default)
@@ -67,8 +75,10 @@ public sealed class JobExecutionService(
     }
 
     /// <summary>
-    /// Останавливает отдельное задание, сохраняя его карточку и последний снимок.
+    /// Останавливает отдельное задание, сохраняя его карточку и последний снимок
     /// </summary>
+    /// <param name="jobId">Постоянный идентификатор карточки задания</param>
+    /// <returns>Задача с результатом true при успешной остановке или false, если задание не найдено, его состояние не допускает остановку либо остановка не удалась</returns>
     public async Task<bool> StopAsync(Guid jobId)
     {
         if (!_jobs.TryGetValue(jobId, out var job))
@@ -112,8 +122,10 @@ public sealed class JobExecutionService(
     }
 
     /// <summary>
-    /// Отменяет выполняющееся задание, если это необходимо, и удаляет его карточку.
+    /// Отменяет выполняющееся задание, если это необходимо, и удаляет его карточку
     /// </summary>
+    /// <param name="jobId">Постоянный идентификатор карточки задания</param>
+    /// <returns>Задача с результатом true, если карточка удалена, или false, если она не найдена либо уже удалена</returns>
     public async Task<bool> CancelAsync(Guid jobId)
     {
         if (!_jobs.TryGetValue(jobId, out var job))
@@ -149,8 +161,10 @@ public sealed class JobExecutionService(
     }
 
     /// <summary>
-    /// Запускает новую попытку выполнения ранее загруженного задания.
+    /// Запускает новую попытку выполнения ранее загруженного задания
     /// </summary>
+    /// <param name="jobId">Постоянный идентификатор карточки задания</param>
+    /// <returns>Задача с результатом true, если новая попытка запущена, или false, если задание не найдено, его состояние не допускает запуск либо запуск не удался</returns>
     public async Task<bool> StartJobAsync(Guid jobId)
     {
         if (!_jobs.TryGetValue(jobId, out var job))
@@ -218,8 +232,11 @@ public sealed class JobExecutionService(
     }
 
     /// <summary>
-    /// Загружает сборки и запускает найденные реализации заданий.
+    /// Загружает сборки и запускает найденные реализации заданий
     /// </summary>
+    /// <param name="assemblyPaths">Полные пути к сохраненным сборкам</param>
+    /// <param name="uploadDirectory">Каталог сохраненных сборок и их зависимостей</param>
+    /// <returns>Карточки запущенных заданий и сообщения об ошибках загрузки или запуска</returns>
     private StartJobsResult LoadAndStart(IReadOnlyList<string> assemblyPaths, string uploadDirectory)
     {
         var errors = new List<string>();
@@ -302,8 +319,10 @@ public sealed class JobExecutionService(
     }
 
     /// <summary>
-    /// Создает неизменяемую модель карточки и актуализирует ее по данным оркестратора.
+    /// Создает неизменяемую модель карточки и актуализирует ее по данным оркестратора
     /// </summary>
+    /// <param name="job">Управляемое задание, состояние которого актуализируется по данным оркестратора</param>
+    /// <returns>Карточка задания с последним доступным снимком выполнения</returns>
     private RunningJobInfo CreateInfo(ManagedJob job)
     {
         Guid? runtimeJobId;
@@ -346,6 +365,11 @@ public sealed class JobExecutionService(
         }
     }
 
+    /// <summary>
+    /// Преобразует состояние оркестратора в состояние карточки задания
+    /// </summary>
+    /// <param name="state">Состояние выполнения задания в оркестраторе</param>
+    /// <returns>Соответствующее состояние карточки или Failed для неизвестного значения</returns>
     private static ManagedJobState MapState(JobExecutionState state) => state switch
     {
         JobExecutionState.Running => ManagedJobState.Running,
@@ -356,6 +380,11 @@ public sealed class JobExecutionService(
         _ => ManagedJobState.Failed
     };
 
+    /// <summary>
+    /// Проверяет количество, расширения, общий размер и уникальность имен выбранных файлов
+    /// </summary>
+    /// <param name="files">Выбранные в браузере файлы сборок</param>
+    /// <returns>Описание первого нарушения или null, если файлы прошли проверку</returns>
     private static string? Validate(IReadOnlyCollection<IBrowserFile> files)
     {
         if (files.Count == 0)
@@ -379,6 +408,13 @@ public sealed class JobExecutionService(
             : $"Файл с именем {duplicateName} выбран несколько раз.";
     }
 
+    /// <summary>
+    /// Сохраняет выбранные сборки в каталог загрузки
+    /// </summary>
+    /// <param name="files">Выбранные в браузере файлы сборок</param>
+    /// <param name="uploadDirectory">Каталог сохраненных сборок и их зависимостей</param>
+    /// <param name="cancellationToken">Токен отмены операции</param>
+    /// <returns>Задача со списком путей к сохраненным файлам</returns>
     private static async Task<IReadOnlyList<string>> SaveFilesAsync(
         IEnumerable<IBrowserFile> files,
         string uploadDirectory,
@@ -407,6 +443,12 @@ public sealed class JobExecutionService(
         return paths;
     }
 
+    /// <summary>
+    /// Возвращает доступные типы сборки и регистрирует ошибки частичной загрузки
+    /// </summary>
+    /// <param name="assembly">Сборка для поиска доступных типов</param>
+    /// <param name="errors">Коллекция, в которую добавляются сообщения об ошибках загрузки типов</param>
+    /// <returns>Все типы сборки или успешно загруженные типы при частичной ошибке загрузки</returns>
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly, ICollection<string> errors)
     {
         try
@@ -426,6 +468,10 @@ public sealed class JobExecutionService(
         }
     }
 
+    /// <summary>
+    /// Разрешает зависимости заданий из каталога загрузки, используя общую сборку контрактов
+    /// </summary>
+    /// <param name="directory">Каталог поиска зависимостей загруженных заданий</param>
     private sealed class JobAssemblyLoadContext(string directory) : AssemblyLoadContext
     {
         /// <inheritdoc />
@@ -446,6 +492,13 @@ public sealed class JobExecutionService(
         }
     }
 
+    /// <summary>
+    /// Хранит состояние карточки задания и синхронизирует операции над ней
+    /// </summary>
+    /// <param name="id">Постоянный идентификатор карточки и идентификатор первой попытки выполнения</param>
+    /// <param name="jobType">Тип реализации задания для создания новых попыток выполнения</param>
+    /// <param name="assemblyName">Имя сборки с реализацией задания</param>
+    /// <param name="startedAt">Время запуска первой попытки выполнения</param>
     private sealed class ManagedJob(
         Guid id,
         Type jobType,
@@ -466,7 +519,7 @@ public sealed class JobExecutionService(
 }
 
 /// <summary>
-/// Состояние управляемого задания в веб-интерфейсе.
+/// Состояние управляемого задания в веб-интерфейсе
 /// </summary>
 public enum ManagedJobState
 {
@@ -479,8 +532,12 @@ public enum ManagedJobState
 }
 
 /// <summary>
-/// Сведения о загруженном задании и его последней попытке выполнения.
+/// Сведения о загруженном задании и его последней попытке выполнения
 /// </summary>
+/// <param name="JobId">Постоянный идентификатор карточки задания</param>
+/// <param name="JobType">Полное имя типа задания или короткое имя, если полное недоступно</param>
+/// <param name="AssemblyName">Имя сборки с реализацией задания</param>
+/// <param name="StartedAt">Время запуска последней попытки выполнения</param>
 public sealed record RunningJobInfo(
     Guid JobId,
     string JobType,
@@ -497,11 +554,18 @@ public sealed record RunningJobInfo(
 }
 
 /// <summary>
-/// Результат запуска заданий из загруженных сборок.
+/// Результат запуска заданий из загруженных сборок
 /// </summary>
+/// <param name="StartedJobs">Карточки успешно запущенных заданий</param>
+/// <param name="Errors">Сообщения об ошибках загрузки и запуска</param>
 public sealed record StartJobsResult(
     IReadOnlyList<RunningJobInfo> StartedJobs,
     IReadOnlyList<string> Errors)
 {
+    /// <summary>
+    /// Создает результат неудачного запуска без запущенных заданий
+    /// </summary>
+    /// <param name="error">Описание причины неудачного запуска</param>
+    /// <returns>Результат с пустым списком заданий и указанной ошибкой</returns>
     public static StartJobsResult Failed(string error) => new([], [error]);
 }

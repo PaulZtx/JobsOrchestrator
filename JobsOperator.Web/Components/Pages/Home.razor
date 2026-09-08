@@ -265,7 +265,7 @@
         .Max();
 
     /// <summary>
-    /// Загружает первый снимок и включает автоматическое обновление панели.
+    /// Загружает первый снимок и включает автоматическое обновление панели
     /// </summary>
     protected override void OnInitialized()
     {
@@ -273,6 +273,10 @@
         _refreshTask = RefreshLoopAsync(_refreshCancellation.Token);
     }
 
+    /// <summary>
+    /// Сохраняет выбранные сборки и сообщает о превышении допустимого количества файлов
+    /// </summary>
+    /// <param name="args">Событие выбора файлов с доступом к выбранным сборкам</param>
     private void OnFilesSelected(InputFileChangeEventArgs args)
     {
         try
@@ -289,6 +293,10 @@
         }
     }
 
+    /// <summary>
+    /// Загружает выбранные сборки, запускает задания и обновляет сообщение панели
+    /// </summary>
+    /// <returns>Задача завершения загрузки и запуска с обновлением карточек и состояния формы</returns>
     private async Task UploadAndStartAsync()
     {
         _isUploading = true;
@@ -315,6 +323,11 @@
         }
     }
 
+    /// <summary>
+    /// Останавливает задание и обновляет его карточку и сообщение панели
+    /// </summary>
+    /// <param name="jobId">Постоянный идентификатор карточки задания</param>
+    /// <returns>Задача завершения запроса остановки и обновления списка заданий</returns>
     private async Task StopAsync(Guid jobId)
     {
         _busyJobs.Add(jobId);
@@ -333,6 +346,11 @@
         }
     }
 
+    /// <summary>
+    /// Отменяет задание и удаляет его карточку из списка
+    /// </summary>
+    /// <param name="jobId">Постоянный идентификатор карточки задания</param>
+    /// <returns>Задача завершения запроса удаления и обновления списка заданий</returns>
     private async Task CancelAndRemoveAsync(Guid jobId)
     {
         _busyJobs.Add(jobId);
@@ -351,6 +369,11 @@
         }
     }
 
+    /// <summary>
+    /// Запускает новую попытку выполнения задания и обновляет панель
+    /// </summary>
+    /// <param name="jobId">Постоянный идентификатор карточки задания</param>
+    /// <returns>Задача завершения запроса запуска и обновления списка заданий</returns>
     private async Task StartJobAsync(Guid jobId)
     {
         _busyJobs.Add(jobId);
@@ -369,6 +392,11 @@
         }
     }
 
+    /// <summary>
+    /// Обновляет карточки заданий и перерисовывает панель каждую секунду до отмены
+    /// </summary>
+    /// <param name="cancellationToken">Токен отмены операции</param>
+    /// <returns>Задача, завершающаяся после остановки цикла обновления</returns>
     private async Task RefreshLoopAsync(CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
@@ -390,8 +418,16 @@
         }
     }
 
+    /// <summary>
+    /// Обновляет список карточек по актуальным данным сервиса выполнения
+    /// </summary>
     private void RefreshJobs() => _jobs = JobExecutionService.GetJobs();
 
+    /// <summary>
+    /// Формирует сообщение о количестве запущенных заданий и возникших ошибках
+    /// </summary>
+    /// <param name="result">Результат запуска с карточками заданий и сообщениями об ошибках</param>
+    /// <returns>Сообщение о результате запуска для отображения на панели</returns>
     private static string BuildMessage(StartJobsResult result)
     {
         var started = result.StartedJobs.Count switch
@@ -406,12 +442,22 @@
             : $"{started} {string.Join(" ", result.Errors)}";
     }
 
+    /// <summary>
+    /// Извлекает имя типа задания без пространства имен
+    /// </summary>
+    /// <param name="jobType">Полное имя типа задания</param>
+    /// <returns>Часть имени после последней точки или исходная строка, если точек нет</returns>
     private static string GetShortJobName(string jobType)
     {
         var separator = jobType.LastIndexOf('.');
         return separator < 0 ? jobType : jobType[(separator + 1)..];
     }
 
+    /// <summary>
+    /// Возвращает русское название состояния задания
+    /// </summary>
+    /// <param name="status">Текущее состояние карточки задания</param>
+    /// <returns>Подпись состояния или Неизвестно для неподдерживаемого значения</returns>
     private static string GetStatusLabel(ManagedJobState status) => status switch
     {
         ManagedJobState.Starting => "Запускается",
@@ -423,6 +469,11 @@
         _ => "Неизвестно"
     };
 
+    /// <summary>
+    /// Выбирает CSS-класс индикатора состояния задания
+    /// </summary>
+    /// <param name="status">Текущее состояние карточки задания</param>
+    /// <returns>CSS-класс состояния или stopped для значений без отдельного оформления</returns>
     private static string GetStatusClass(ManagedJobState status) => status switch
     {
         ManagedJobState.Running => "running",
@@ -432,6 +483,11 @@
         _ => "stopped"
     };
 
+    /// <summary>
+    /// Выбирает форму слова коллекция по количеству состояний
+    /// </summary>
+    /// <param name="count">Количество коллекций состояния</param>
+    /// <returns>Форма коллекция для одного, коллекции для двух–четырех и коллекций для остальных значений</returns>
     private static string GetStateWord(int count) => count switch
     {
         1 => "коллекция",
@@ -439,8 +495,18 @@
         _ => "коллекций"
     };
 
+    /// <summary>
+    /// Форматирует целое число с разделителями групп разрядов русской локали
+    /// </summary>
+    /// <param name="value">Число для отображения</param>
+    /// <returns>Число без дробной части с разделителями групп разрядов</returns>
     private static string FormatNumber(long value) => value.ToString("N0", new System.Globalization.CultureInfo("ru-RU"));
 
+    /// <summary>
+    /// Форматирует время события относительно текущего момента
+    /// </summary>
+    /// <param name="value">Время события или null, если событие еще не происходило</param>
+    /// <returns>Относительное время для событий моложе часа, локальная дата и время для остальных или тире при отсутствии события</returns>
     private static string FormatRelativeTime(DateTimeOffset? value)
     {
         if (value is null)
@@ -460,6 +526,11 @@
         return value.Value.ToLocalTime().ToString("dd.MM, HH:mm");
     }
 
+    /// <summary>
+    /// Форматирует размер файла в байтах, килобайтах или мегабайтах
+    /// </summary>
+    /// <param name="bytes">Размер файла в байтах</param>
+    /// <returns>Размер с единицей измерения и одним десятичным знаком для килобайт и мегабайт</returns>
     private static string FormatSize(long bytes)
     {
         if (bytes < 1024)

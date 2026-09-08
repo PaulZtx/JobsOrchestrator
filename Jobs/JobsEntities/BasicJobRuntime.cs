@@ -115,8 +115,9 @@ internal sealed class BasicJobRuntime(
     }
 
     /// <summary>
-    /// Возвращает агрегированные показатели выполнения и состояние задания.
+    /// Возвращает агрегированные показатели выполнения и состояние задания
     /// </summary>
+    /// <returns>Агрегированный снимок счетчиков конвейеров, последнего сообщения и внутренних состояний задания</returns>
     internal JobRuntimeSnapshot CaptureDiagnostics()
     {
         var pipelineSnapshots = Volatile.Read(ref _pipelineRunners)
@@ -139,6 +140,7 @@ internal sealed class BasicJobRuntime(
     /// Ожидает завершения задач и подавляет уже наблюдаемые ошибки
     /// </summary>
     /// <param name="tasks">Задачи для ожидания</param>
+    /// <returns>Задача, завершающаяся после всех переданных задач без повторного распространения их ошибок или отмены</returns>
     private static async Task ObserveFailuresAsync(IEnumerable<Task> tasks)
     {
         try

@@ -17,22 +17,26 @@ internal interface IPipelineRunner
     /// Запускает конвейер
     /// </summary>
     /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Задача выполнения конвейера до завершения чтения и обработки, отмены или ошибки</returns>
     Task RunAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// Приостанавливает чтение и ожидает завершения обработки
     /// </summary>
     /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Задача, завершающаяся после приостановки чтения и обработки всех уже принятых элементов</returns>
     Task PauseAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// Возобновляет чтение
     /// </summary>
+    /// <returns>Задача завершения снятия паузы чтения источника</returns>
     Task ResumeAsync();
 
     /// <summary>
     /// Останавливает конвейер
     /// </summary>
+    /// <returns>Задача завершения остановки рабочих задач конвейера</returns>
     Task StopAsync();
 
     /// <summary>
@@ -42,7 +46,8 @@ internal interface IPipelineRunner
     Task<SourcePosition> CaptureStateAsync();
 
     /// <summary>
-    /// Возвращает текущие счетчики обработки конвейера.
+    /// Возвращает текущие счетчики обработки конвейера
     /// </summary>
+    /// <returns>Снимок количества обработанных сообщений, времени и содержимого последнего сообщения</returns>
     PipelineExecutionSnapshot CaptureDiagnostics();
 }

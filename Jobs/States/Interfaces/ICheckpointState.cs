@@ -24,5 +24,6 @@ internal interface ICheckpointState
     /// </summary>
     /// <param name="snapshot">Снимок состояния</param>
     /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Операция, завершающаяся после восстановления состояния из снимка</returns>
     ValueTask RestoreAsync(StateSnapshot snapshot, CancellationToken cancellationToken);
 }

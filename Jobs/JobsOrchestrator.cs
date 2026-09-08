@@ -89,10 +89,10 @@ public class JobsOrchestrator
     }
 
     /// <summary>
-    /// Возвращает диагностический снимок задания.
+    /// Возвращает диагностический снимок задания
     /// </summary>
-    /// <param name="jobId">Идентификатор попытки выполнения.</param>
-    /// <returns>Снимок задания или <see langword="null"/>, если задание не найдено.</returns>
+    /// <param name="jobId">Идентификатор попытки выполнения</param>
+    /// <returns>Снимок задания или <see langword="null"/>, если задание не найдено</returns>
     public JobExecutionSnapshot? GetJobSnapshot(Guid jobId)
     {
         return _jobs.TryGetValue(jobId, out var entry)
@@ -135,8 +135,10 @@ public class JobsOrchestrator
     }
 
     /// <summary>
-    /// Создает диагностический снимок записи оркестратора.
+    /// Создает диагностический снимок записи оркестратора
     /// </summary>
+    /// <param name="entry">Запись оркестратора с задачей выполнения и источником отмены</param>
+    /// <returns>Диагностический снимок с состоянием выполнения, счетчиками, внутренними состояниями и ошибкой задания</returns>
     private static JobExecutionSnapshot CreateSnapshot(JobEntry entry)
     {
         var runtime = (BasicJobRuntime)entry.Runtime;
@@ -155,8 +157,10 @@ public class JobsOrchestrator
     }
 
     /// <summary>
-    /// Определяет состояние задания по задаче выполнения и токену отмены.
+    /// Определяет состояние задания по задаче выполнения и токену отмены
     /// </summary>
+    /// <param name="entry">Запись оркестратора с задачей выполнения и источником отмены</param>
+    /// <returns>Состояние задания, определенное по завершению задачи, ее ошибке и запросу отмены</returns>
     private static JobExecutionState ResolveState(JobEntry entry)
     {
         if (entry.JobTask.IsFaulted)

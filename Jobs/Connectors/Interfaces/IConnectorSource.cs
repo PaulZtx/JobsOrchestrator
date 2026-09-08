@@ -19,5 +19,6 @@ public interface IConnectorSource<T> : IConnector
     /// </summary>
     /// <param name="position">Следующая позиция после обработанных элементов</param>
     /// <param name="cancellationToken">Токен отмены</param>
+    /// <returns>Задача завершения подтверждения указанной позиции источника</returns>
     Task CommitAsync(SourcePosition position, CancellationToken cancellationToken);
 }

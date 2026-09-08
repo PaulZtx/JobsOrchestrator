@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Jobs.Diagnostics;
 
 /// <summary>
-/// Форматирует произвольные значения для диагностического интерфейса.
+/// Форматирует произвольные значения для диагностического интерфейса
 /// </summary>
 internal static class DiagnosticValueFormatter
 {
@@ -15,8 +15,11 @@ internal static class DiagnosticValueFormatter
     };
 
     /// <summary>
-    /// Сериализует значение в компактную и ограниченную по размеру строку.
+    /// Сериализует значение в компактную и ограниченную по размеру строку
     /// </summary>
+    /// <param name="value">Значение для диагностического представления</param>
+    /// <typeparam name="T">Тип форматируемого значения</typeparam>
+    /// <returns>JSON или резервное текстовое представление, обрезанное до 4000 символов с добавлением многоточия при превышении длины</returns>
     public static string Format<T>(T value)
     {
         string text;
