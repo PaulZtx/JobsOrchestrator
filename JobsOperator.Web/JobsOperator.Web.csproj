@@ -7,8 +7,4 @@
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
   </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Jobs\Jobs.csproj" />
-  </ItemGroup>
-
 </Project>

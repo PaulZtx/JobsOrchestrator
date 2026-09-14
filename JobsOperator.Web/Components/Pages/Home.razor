@@ -1,7 +1,7 @@
 @page "/"
 @implements IAsyncDisposable
 @using JobsOperator.Web.Services
-@inject JobExecutionService JobExecutionService
+@inject JobsApiClient JobsApiClient
 
 <PageTitle>JobsOperator — мониторинг заданий</PageTitle>
 
@@ -241,7 +241,7 @@
     }
 </section>
 
-<p class="notice">Сборки выполняются внутри процесса сервера. Загружайте только доверенные DLL.</p>
+<p class="notice">Сборки выполняются внутри отдельного процесса Worker. Загружайте только доверенные DLL.</p>
 
 @code {
     private const int MaxFileCount = 20;
@@ -267,9 +267,17 @@
     /// <summary>
     /// Загружает первый снимок и включает автоматическое обновление панели
     /// </summary>
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        RefreshJobs();
+        try
+        {
+            await RefreshJobsAsync(_refreshCancellation.Token);
+        }
+        catch (Exception exception)
+        {
+            SetApiError(exception);
+        }
+
         _refreshTask = RefreshLoopAsync(_refreshCancellation.Token);
     }
 
@@ -304,8 +312,10 @@
 
         try
         {
-            var result = await JobExecutionService.StartAsync(_selectedFiles);
-            RefreshJobs();
+            var result = await JobsApiClient.UploadAndStartAsync(
+                _selectedFiles,
+                _refreshCancellation.Token);
+            await RefreshJobsAsync(_refreshCancellation.Token);
             _hasError = result.StartedJobs.Count == 0;
             _message = BuildMessage(result);
 
@@ -335,14 +345,18 @@
 
         try
         {
-            var stopped = await JobExecutionService.StopAsync(jobId);
-            _hasError = !stopped;
-            _message = stopped ? "Задание отменено." : "Не удалось отменить задание.";
+            await JobsApiClient.StopJobAsync(jobId, _refreshCancellation.Token);
+            _hasError = false;
+            _message = "Задание отменено.";
+        }
+        catch (Exception exception)
+        {
+            SetApiError(exception);
         }
         finally
         {
             _busyJobs.Remove(jobId);
-            RefreshJobs();
+            await TryRefreshJobsAsync();
         }
     }
 
@@ -358,14 +372,18 @@
 
         try
         {
-            var cancelled = await JobExecutionService.CancelAsync(jobId);
-            _hasError = !cancelled;
-            _message = cancelled ? "Задание отменено и убрано из списка." : "Не удалось отменить задание.";
+            await JobsApiClient.DeleteJobAsync(jobId, _refreshCancellation.Token);
+            _hasError = false;
+            _message = "Задание отменено и убрано из списка.";
+        }
+        catch (Exception exception)
+        {
+            SetApiError(exception);
         }
         finally
         {
             _busyJobs.Remove(jobId);
-            RefreshJobs();
+            await TryRefreshJobsAsync();
         }
     }
 
@@ -381,14 +399,18 @@
 
         try
         {
-            var started = await JobExecutionService.StartJobAsync(jobId);
-            _hasError = !started;
-            _message = started ? "Задание запущено." : "Не удалось запустить задание.";
+            await JobsApiClient.StartJobAsync(jobId, _refreshCancellation.Token);
+            _hasError = false;
+            _message = "Задание запущено.";
+        }
+        catch (Exception exception)
+        {
+            SetApiError(exception);
         }
         finally
         {
             _busyJobs.Remove(jobId);
-            RefreshJobs();
+            await TryRefreshJobsAsync();
         }
     }
 
@@ -405,23 +427,77 @@
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                await InvokeAsync(() =>
+                try
                 {
-                    RefreshJobs();
-                    StateHasChanged();
-                });
+                    var jobs = await JobsApiClient.GetJobsAsync(cancellationToken);
+                    await InvokeAsync(() =>
+                    {
+                        _jobs = jobs;
+                        StateHasChanged();
+                    });
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    await InvokeAsync(() =>
+                    {
+                        SetApiError(exception);
+                        StateHasChanged();
+                    });
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Закрытие страницы останавливает обновление.
+            // Закрытие страницы останавливает обновление
         }
     }
 
     /// <summary>
-    /// Обновляет список карточек по актуальным данным сервиса выполнения
+    /// Обновляет список карточек по актуальным данным REST API
     /// </summary>
-    private void RefreshJobs() => _jobs = JobExecutionService.GetJobs();
+    /// <param name="cancellationToken">Токен отмены HTTP-запроса</param>
+    /// <returns>Задача завершения обновления списка</returns>
+    private async Task RefreshJobsAsync(CancellationToken cancellationToken)
+    {
+        _jobs = await JobsApiClient.GetJobsAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Обновляет карточки после команды без замены исходного сообщения об ошибке
+    /// </summary>
+    /// <returns>Задача завершения попытки обновления</returns>
+    private async Task TryRefreshJobsAsync()
+    {
+        try
+        {
+            await RefreshJobsAsync(_refreshCancellation.Token);
+        }
+        catch (OperationCanceledException) when (_refreshCancellation.IsCancellationRequested)
+        {
+            // Закрытие страницы отменяет завершающее обновление
+        }
+        catch (Exception exception)
+        {
+            if (!_hasError)
+                SetApiError(exception);
+        }
+    }
+
+    /// <summary>
+    /// Отображает ошибку связи с REST API
+    /// </summary>
+    /// <param name="exception">Ошибка HTTP-команды или чтения ответа</param>
+    private void SetApiError(Exception exception)
+    {
+        _hasError = true;
+        _message = exception is HttpRequestException
+            ? "Jobs API недоступен. Проверьте, что API и Worker запущены."
+            : exception.Message;
+    }
 
     /// <summary>
     /// Формирует сообщение о количестве запущенных заданий и возникших ошибках

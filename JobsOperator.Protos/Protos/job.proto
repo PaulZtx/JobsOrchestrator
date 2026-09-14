@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "JobsOperator.Protos";
+
+package jobs;
+
+service JobService {
+  rpc GetJob (JobRequest) returns (JobResponse);
+  rpc GetJobs (google.protobuf.Empty) returns (JobsResponse);
+  rpc StartJob (JobRequest) returns (JobResponse);
+  rpc StopJob (JobRequest) returns (JobResponse);
+  rpc DeleteJob (JobRequest) returns (google.protobuf.Empty);
+  rpc UploadPackage (stream UploadPackageRequest) returns (UploadPackageResponse);
+}
+
+message JobRequest {
+  string job_id = 1;
+}
+
+message JobResponse {
+  string job_id = 1;
+  string runtime_job_id = 2;
+  string job_type = 3;
+  string assembly_name = 4;
+  google.protobuf.Timestamp started_at = 5;
+  JobStatus status = 6;
+  int64 processed_count = 7;
+  google.protobuf.Timestamp last_processed_at = 8;
+  string last_processed_message = 9;
+  repeated JobStateResponse states = 10;
+  string error_message = 11;
+}
+
+message JobsResponse {
+  repeated JobResponse responses = 1;
+}
+
+message UploadPackageRequest {
+  oneof frame {
+    PackageHeader package_header = 1;
+    FileHeader file_header = 2;
+    bytes content = 3;
+  }
+}
+
+message PackageHeader {
+  string operation_id = 1;
+}
+
+message FileHeader {
+  string file_name = 1;
+  int64 length = 2;
+}
+
+message UploadPackageResponse {
+  string package_id = 1;
+  int64 total_bytes = 2;
+  repeated UploadedPackageFile files = 3;
+  repeated JobResponse started_jobs = 4;
+  repeated string errors = 5;
+}
+
+message UploadedPackageFile {
+  string file_name = 1;
+  int64 length = 2;
+  string sha256 = 3;
+}
+
+message JobStateResponse {
+  string name = 1;
+  string item_type = 2;
+  int32 item_count = 3;
+  repeated string items = 4;
+}
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_STARTING = 1;
+  JOB_STATUS_RUNNING = 2;
+  JOB_STATUS_CANCELLING = 3;
+  JOB_STATUS_STOPPED = 4;
+  JOB_STATUS_COMPLETED = 5;
+  JOB_STATUS_FAILED = 6;
+}
