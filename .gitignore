@@ -483,5 +483,6 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# Runtime uploads from the local JobsOperator UI
+# Runtime job packages and legacy UI uploads
 JobsOperator.Web/App_Data/
+JobsOperator.Worker/App_Data/

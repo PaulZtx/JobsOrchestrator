@@ -1,0 +1,24 @@
+@JobsOperator_Api_HostAddress = http://localhost:5244
+@JobId = 00000000-0000-0000-0000-000000000000
+
+GET {{JobsOperator_Api_HostAddress}}/api/v1/jobs
+Accept: application/json
+
+###
+
+GET {{JobsOperator_Api_HostAddress}}/api/v1/jobs/{{JobId}}
+Accept: application/json
+
+###
+
+POST {{JobsOperator_Api_HostAddress}}/api/v1/jobs/{{JobId}}/start
+Accept: application/json
+
+###
+
+POST {{JobsOperator_Api_HostAddress}}/api/v1/jobs/{{JobId}}/stop
+Accept: application/json
+
+###
+
+DELETE {{JobsOperator_Api_HostAddress}}/api/v1/jobs/{{JobId}}
